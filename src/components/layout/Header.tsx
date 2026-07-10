@@ -1,0 +1,435 @@
+// ===== Main Header / Banner Component =====
+
+import { useState, useEffect } from 'react';
+import { NavLink, Link } from 'react-router-dom';
+import {
+  Home,
+  FolderKanban,
+  BarChart3,
+  Heart,
+  Menu,
+  X,
+  Settings,
+  Sun,
+  Moon,
+  Search,
+  User,
+  Bell,
+  Wifi,
+  WifiOff,
+  MessageSquare,
+  LifeBuoy,
+  BookOpen,
+  Copy,
+  Check,
+  ExternalLink,
+  CheckCheck,
+} from 'lucide-react';
+import { useAppSelector } from '../../store';
+import { useGetNotificationsQuery, useMarkNotificationReadMutation, useMarkAllNotificationsReadMutation } from '../../store/api/qortiumApi';
+import { isQortiumBridgeAvailable, requestQortium } from '../../services/qortium/qortiumClient';
+import UserRoleBadge from '../common/UserRoleBadge';
+import FundBalance from '../common/FundBalance';
+
+const navItems = [
+  { to: '/', label: 'Home', icon: Home },
+  { to: '/forum', label: 'Forum', icon: MessageSquare },
+  { to: '/projects', label: 'Projects', icon: FolderKanban },
+  { to: '/polls', label: 'Polls', icon: BarChart3 },
+  { to: '/donations', label: 'Donations', icon: Heart },
+  { to: '/support', label: 'Support', icon: LifeBuoy },
+  { to: '/wiki', label: 'Wiki', icon: BookOpen },
+];
+
+const Header = ({
+  isDark,
+  onToggleTheme,
+  searchQuery,
+  onSearchChange,
+}: {
+  isDark: boolean;
+  onToggleTheme: () => void;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+}) => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { name, role, isAuthenticated, isLoading } = useAppSelector(
+    (state) => state.auth
+  );
+
+  const isAdmin =
+    isAuthenticated &&
+    ['SysOp', 'SuperAdmin', 'Admin'].includes(role);
+
+  const bridgeAvailable = isQortiumBridgeAvailable();
+
+  // Real notifications from QDN
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfilePopup, setShowProfilePopup] = useState(false);
+  const { data: notifications = [] } = useGetNotificationsQuery();
+  const [markRead] = useMarkNotificationReadMutation();
+  const [markAllRead] = useMarkAllNotificationsReadMutation();
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const [userBalance, setUserBalance] = useState<number | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [addressCopied, setAddressCopied] = useState(false);
+
+  const { address } = useAppSelector((s) => s.auth);
+
+  // Fetch user balance when popup opens
+  useEffect(() => {
+    if (showProfilePopup && address && userBalance === null && !balanceLoading) {
+      setBalanceLoading(true);
+      requestQortium<unknown>({ action: 'GET_BALANCE', address })
+        .then((raw) => {
+          if (typeof raw === 'number') setUserBalance(raw);
+          else if (typeof raw === 'string') { const p = Number(raw); if (Number.isFinite(p)) setUserBalance(p / 1e8); }
+          else if (raw && typeof raw === 'object') {
+            const r = raw as Record<string, unknown>;
+            for (const k of ['balance', 'value', 'amount', 'confirmedBalance']) {
+              const v = r[k];
+              if (typeof v === 'number') { setUserBalance(v / 1e8); break; }
+              if (typeof v === 'string') { const p = Number(v); if (Number.isFinite(p)) { setUserBalance(p / 1e8); break; } }
+            }
+          }
+        })
+        .catch(() => setUserBalance(null))
+        .finally(() => setBalanceLoading(false));
+    }
+  }, [showProfilePopup, address, userBalance, balanceLoading]);
+
+  const copyAddress = () => {
+    if (address) {
+      navigator.clipboard?.writeText(address).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = address;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      });
+      setAddressCopied(true);
+      setTimeout(() => setAddressCopied(false), 2000);
+    }
+  };
+
+  const initialsFromName = (displayName: string | null) => {
+    if (!displayName) return 'Q';
+    return displayName
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('')
+      .slice(0, 2);
+  };
+
+  return (
+    <header className="relative z-30 bg-gradient-to-br from-slate-900 via-slate-800 to-cyan-950 text-white">
+      {/* Subtle background pattern */}
+      <div
+        className="pointer-events-none absolute inset-0 overflow-hidden opacity-[0.03]"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 20% 50%, #06b6d4 1px, transparent 1px), radial-gradient(circle at 80% 20%, #22d3ee 1px, transparent 1px)',
+          backgroundSize: '40px 40px, 60px 60px',
+        }}
+      />
+
+      {/* Top bar: User info (left) + Fund balance + controls (right) */}
+      <div className="relative flex items-center gap-3 px-4 py-3 sm:px-6">
+        {/* Avatar */}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-sm font-bold text-white shadow-lg shadow-cyan-500/25">
+          {isLoading ? (
+            <span className="animate-pulse">...</span>
+          ) : (
+            initialsFromName(name)
+          )}
+        </div>
+
+        {/* User details */}
+        <div className="min-w-0 flex-1">
+          {isLoading ? (
+            <div className="space-y-1">
+              <div className="h-4 w-24 animate-pulse rounded bg-white/20" />
+              <div className="h-3 w-16 animate-pulse rounded bg-white/10" />
+            </div>
+          ) : isAuthenticated ? (
+            <>
+              <p className="truncate text-sm font-semibold leading-tight">
+                {name || 'Unnamed User'}
+              </p>
+              <div className="mt-0.5 flex items-center gap-1.5">
+                <UserRoleBadge role={role} />
+              </div>
+            </>
+          ) : (
+            <p className="text-sm font-medium tracking-wide text-slate-300">
+              Qortium United Community
+            </p>
+          )}
+        </div>
+
+        {/* Right side: Fund balance (desktop) + theme + notifications */}
+        <div className="flex items-center gap-1">
+          <FundBalance />
+
+          {/* Node status */}
+          <span className={`hidden items-center gap-0.5 sm:flex`} title={bridgeAvailable ? 'Connected to Qortium node' : 'Not connected (dev mode)'}>
+            <span className={`rounded p-1 text-xs transition hover:bg-white/5 ${bridgeAvailable ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {bridgeAvailable ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+            </span>
+          </span>
+
+          {/* Notifications */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+            >
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+            {showNotifications && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                <div className="absolute right-0 top-full z-[60] mt-1 w-72 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-card)] shadow-xl dark:text-[var(--color-text-primary)]">
+                  <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2.5">
+                    <h3 className="text-xs font-semibold">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={() => markAllRead(notifications)}
+                        className="flex items-center gap-1 text-[10px] text-cyan-600 transition hover:text-cyan-700 dark:text-cyan-400"
+                      >
+                        <CheckCheck className="h-3 w-3" />
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="px-4 py-6 text-center text-xs text-[var(--color-text-muted)]">No notifications yet.</p>
+                    ) : (
+                      notifications.map((n) => (
+                        <div
+                          key={n.id}
+                          className={`border-b border-[var(--color-border-subtle)] transition last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${!n.read ? 'bg-cyan-50/30 dark:bg-cyan-950/20' : ''}`}
+                        >
+                          {n.link ? (
+                            <Link
+                              to={n.link}
+                              onClick={() => { markRead(n); setShowNotifications(false); }}
+                              className="block px-4 py-2.5"
+                            >
+                              <p className="text-sm">{n.text}</p>
+                              <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
+                                {new Date(n.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </Link>
+                          ) : (
+                            <div className="px-4 py-2.5">
+                              <p className="text-sm">{n.text}</p>
+                              <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
+                                {new Date(n.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Dark mode toggle */}
+          <button
+            onClick={onToggleTheme}
+            className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+
+          {/* Mobile menu toggle */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="rounded-md p-1.5 text-slate-300 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-400 lg:hidden"
+            aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isMobileMenuOpen}
+          >
+            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Navigation bar */}
+      <nav className="border-t border-white/10 bg-[var(--color-surface-banner-accent)] px-6">
+        {/* Desktop nav */}
+        <div className="hidden items-center gap-1 lg:flex">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'border-b-2 border-cyan-400 text-white'
+                    : 'text-slate-400 hover:text-white'
+                }`
+              }
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </NavLink>
+          ))}
+
+          {/* Spacer to push fund balance right on mobile */}
+          <div className="flex-1" />
+
+          {/* Search bar */}
+          <div className="relative mx-2 hidden md:block">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search posts..."
+              className="w-44 rounded-lg border border-white/10 bg-white/5 py-1.5 pl-8 pr-3 text-sm text-white placeholder:text-slate-500 transition focus:w-56 focus:border-cyan-400/50 focus:bg-white/10 focus:outline-none"
+            />
+          </div>
+
+          {/* Profile popup trigger */}
+          <div className="relative">
+            <button
+              onClick={() => setShowProfilePopup(!showProfilePopup)}
+              className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:text-white"
+            >
+              <User className="h-4 w-4" />
+              <span className="hidden xl:inline">Profile</span>
+            </button>
+
+            {showProfilePopup && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowProfilePopup(false)} />
+                <div className="absolute right-0 top-full z-[60] mt-1 w-64 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-card)] p-4 shadow-xl dark:text-[var(--color-text-primary)]">
+                  {/* Avatar + Name */}
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-sm font-bold text-white">
+                      {initialsFromName(name)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{name || 'Unnamed User'}</p>
+                      <UserRoleBadge role={role} />
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="mb-3 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50">
+                    <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">Wallet Address</p>
+                    <div className="flex items-center gap-1.5">
+                      <code className="flex-1 truncate text-xs">{address?.slice(0, 12)}...{address?.slice(-8)}</code>
+                      <button onClick={copyAddress} className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition hover:bg-slate-200 dark:hover:bg-slate-700">
+                        {addressCopied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Balance */}
+                  <div className="mb-3 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50">
+                    <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">Balance</p>
+                    {balanceLoading ? (
+                      <div className="h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                    ) : (
+                      <p className="text-sm font-semibold tabular-nums text-emerald-600">
+                        {userBalance !== null ? `${userBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })} QORT` : '—'}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Full profile link */}
+                  <Link
+                    to="/profile"
+                    onClick={() => setShowProfilePopup(false)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2 text-xs font-medium text-white transition hover:bg-cyan-700"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    View Full Profile
+                  </Link>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Admin link */}
+          {isAdmin && (
+            <NavLink
+              to="/admin"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'border-b-2 border-amber-400 text-white'
+                    : 'text-slate-400 hover:text-white'
+                }`
+              }
+            >
+              <Settings className="h-4 w-4" />
+              Admin
+            </NavLink>
+          )}
+
+          {/* Fund balance – visible inline on smaller screens */}
+          <div className="lg:hidden">
+            <FundBalance />
+          </div>
+        </div>
+
+        {/* Mobile nav */}
+        {isMobileMenuOpen && (
+          <div className="flex flex-col gap-1 py-3 lg:hidden">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-cyan-500/20 text-white'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`
+                }
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </NavLink>
+            ))}
+            {isAdmin && (
+              <NavLink
+                to="/admin"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-amber-500/20 text-white'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`
+                }
+              >
+                <Settings className="h-4 w-4" />
+                Admin
+              </NavLink>
+            )}
+          </div>
+        )}
+      </nav>
+    </header>
+  );
+};
+
+export default Header;
