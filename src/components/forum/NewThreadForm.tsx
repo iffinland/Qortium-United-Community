@@ -3,7 +3,6 @@
 import { useState, type FormEvent } from 'react';
 import { useCreateThreadMutation } from '../../store/api/forumApi';
 import { useAppSelector } from '../../store';
-import { createNotification } from '../../services/qortium/notificationService';
 import RichTextEditor from './RichTextEditor';
 
 interface NewThreadFormProps {
@@ -24,7 +23,7 @@ const NewThreadForm = ({ categoryId, onCancel, onSuccess }: NewThreadFormProps) 
     if (!title.trim() || !content.trim() || isLoading) return;
 
     try {
-      const thread = await createThread({
+      await createThread({
         categoryId,
         title: title.trim(),
         content: content.trim(),
@@ -35,11 +34,6 @@ const NewThreadForm = ({ categoryId, onCancel, onSuccess }: NewThreadFormProps) 
       setTitle('');
       setContent('');
       setTags('');
-      createNotification({
-        type: 'forum_thread',
-        text: `New forum thread: ${title.trim()}`,
-        link: `/forum/${categoryId}/${thread.id}`,
-      });
       onSuccess();
     } catch { /* RTK handles */ }
   };

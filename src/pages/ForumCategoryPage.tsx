@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Pin, MessageSquare, Eye, Plus } from 'lucide-react';
+import { ArrowLeft, Plus } from 'lucide-react';
 import { useGetCategoriesQuery, useGetThreadsQuery } from '../store/api/forumApi';
 import type { ForumThread } from '../types/forum';
 import NewThreadForm from '../components/forum/NewThreadForm';
@@ -19,12 +19,12 @@ const timeAgo = (d: string) => {
 const ForumCategoryPage = () => {
   const { categoryId } = useParams<{ categoryId: string }>();
   const { data: categories } = useGetCategoriesQuery();
-  const { data: threads, isLoading } = useGetThreadsQuery(categoryId || '');
+  const { data: result, isLoading } = useGetThreadsQuery(categoryId || '');
   const [showNewThread, setShowNewThread] = useState(false);
 
   const category = categories?.find((c) => c.id === categoryId);
-  const pinned = (threads ?? []).filter((t) => t.isPinned);
-  const normal = (threads ?? []).filter((t) => !t.isPinned);
+  const threads = result?.topics ?? [];
+  const completeness = result?.completeness;
 
   if (isLoading) {
     return (
@@ -73,45 +73,37 @@ const ForumCategoryPage = () => {
         />
       )}
 
-      {/* Pinned threads */}
-      {pinned.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
-            Pinned
-          </p>
-          {pinned.map((thread) => (
-            <ThreadRow key={thread.id} thread={thread} pinned />
-          ))}
+      {/* Incomplete notice */}
+      {completeness === 'incomplete' && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+          Some Forum resources could not be loaded. The visible results may be incomplete.
         </div>
       )}
 
-      {/* Normal threads */}
+      {/* Threads */}
       <div className="space-y-1">
-        {normal.length === 0 && pinned.length === 0 ? (
+        {threads.length === 0 ? (
           <div className="rounded-lg bg-[var(--color-surface-card)] p-6 text-center">
             <p className="text-sm text-[var(--color-text-muted)]">No threads yet. Start a conversation!</p>
           </div>
         ) : (
-          normal.map((thread) => <ThreadRow key={thread.id} thread={thread} />)
+          threads.map((thread) => <ThreadRow key={thread.id} thread={thread} />)
         )}
       </div>
     </div>
   );
 };
 
-const ThreadRow = ({ thread, pinned = false }: { thread: ForumThread; pinned?: boolean }) => (
+const ThreadRow = ({ thread }: { thread: ForumThread }) => (
   <Link
     to={`/forum/${thread.categoryId}/${thread.id}`}
-    className={`flex items-center gap-3 rounded-lg p-3 transition hover:bg-[var(--color-surface-card)] hover:shadow-sm ${
-      pinned ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''
-    }`}
+    className="flex items-center gap-3 rounded-lg p-3 transition hover:bg-[var(--color-surface-card)] hover:shadow-sm"
   >
     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-[10px] font-bold text-white">
       {thread.authorName.slice(0, 2).toUpperCase()}
     </div>
     <div className="min-w-0 flex-1">
       <div className="flex items-center gap-2">
-        {pinned && <Pin className="h-3 w-3 shrink-0 text-amber-500" />}
         <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
           {thread.title}
         </p>
@@ -125,13 +117,6 @@ const ThreadRow = ({ thread, pinned = false }: { thread: ForumThread; pinned?: b
         by {thread.authorName} · {timeAgo(thread.createdAt)} ago
       </p>
     </div>
-    <div className="hidden shrink-0 items-center gap-3 text-xs text-[var(--color-text-muted)] sm:flex">
-      <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />{thread.replyCount}</span>
-      <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{thread.viewCount}</span>
-    </div>
-    {thread.isLocked && (
-      <span className="shrink-0 rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-400 dark:border-slate-700">Locked</span>
-    )}
   </Link>
 );
 

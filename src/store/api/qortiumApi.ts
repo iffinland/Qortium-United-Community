@@ -1,25 +1,37 @@
 // ===== RTK Query – Qortium API =====
 //
-// Real API layer using the Qortium qdnRequest bridge.
-// All queries and mutations go directly to QDN — no mock data.
+// Posts and comments now use the publisher-aware validated QDN runtime.
+// Polls, fund, and roles remain on legacy paths (out of scope for this phase).
 //
-// QDN resource identifiers:
-//   Posts:    DOCUMENT / <ownerName> / posts-index
-//   Polls:    DOCUMENT / <ownerName> / polls-index
-//   Projects: DOCUMENT / <ownerName> / projects-index
+// QDN resource identifiers (migrated domains):
+//   Posts:    qucp-post-{entityId}
+//   Comments: qucp-post-comment-{entityId}
+//   Projects: qucp-project-{entityId} (in projectApi)
+//
+// Legacy identifiers (not yet migrated):
+//   Polls:    poll-
 
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import {
   requestQortium,
-  fetchQdnJson,
-  extractArray,
   getOwnerName,
 } from '../../services/qortium/qortiumClient';
 import { publishJsonResource } from '../../services/qortium/qdnService';
-import { deleteResource } from '../../services/qortium/qdnService';
-import type { Post, Poll, Project, FundTransaction, Comment, PostWithComments, RoleRegistry } from '../../types';
+import type { Post, Poll, FundTransaction, Comment, PostWithComments, RoleRegistry } from '../../types';
 import { fetchRoleRegistry, publishRoleRegistry } from '../../services/qortium/rolesService';
-import { fetchNotifications, markNotificationRead, markAllNotificationsRead, type Notification } from '../../services/qortium/notificationService';
+import {
+  fetchValidatedPosts,
+  fetchValidatedComments,
+  fetchValidatedTombstones,
+  getTombstoneComposition,
+  buildCommentPayload,
+  buildTombstonePayload,
+  fetchMediaReference,
+  toResolvedMediaView,
+} from '../../services/qdn/runtime/qdnRuntimeService';
+import { buildQucpIdentifier } from '../../services/qdn/identifiers/qucpIdentifiers';
+import { buildOwnerTombstoneIdentifier } from '../../services/qdn/identifiers/operationIdentifiers';
+import type { TargetOwnerInfo } from '../../services/qdn/operations/ownerTombstoneReducer';
 
 // ---- QDN Identifiers ----
 const QDN_SERVICE = 'DOCUMENT';
@@ -31,79 +43,136 @@ const FUND_ADDRESS =
 
 // ---- Helpers ----
 
-/** Resolve the current user's QDN name for reading/publishing. */
-const resolveQdnName = async (): Promise<string> => getOwnerName();
-
 /** Simple wrapper: call realFn, return { data } or { error }. */
 const queryFn = async <T>(realFn: () => Promise<T>): Promise<{ data: T } | { error: string }> => {
   try { return { data: await realFn() }; }
   catch (err) { return { error: err instanceof Error ? err.message : 'Request failed.' }; }
 };
 
-/** Search QDN for resources matching an identifier prefix, fetch each one. */
-const searchAndFetch = async <T>(identifierPrefix: string): Promise<T[]> => {
-  const searchResults = await requestQortium<unknown[]>({
-    action: 'SEARCH_QDN_RESOURCES',
-    service: QDN_SERVICE,
-    identifier: identifierPrefix,
-    prefix: true,
-    mode: 'ALL',
-    reverse: true,
-    limit: 50,
-    offset: 0,
-  });
+/** Convert a validated QDN post envelope to the UI Post type. */
+function toPostView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number; updated?: number } }; entityId: string; publisherName: string; publisherAddress: string }): Post {
+  const d = env.envelope.data;
+  const meta = env.envelope.metadata;
+  return {
+    id: env.entityId,
+    title: (d.title as string) ?? '',
+    content: (d.content as string) ?? '',
+    authorName: env.publisherName,
+    authorAddress: env.publisherAddress,
+    createdAt: meta.created ? new Date(meta.created).toISOString() : new Date().toISOString(),
+    updatedAt: meta.updated ? new Date(meta.updated).toISOString() : null,
+    commentsCount: 0,
+    likesCount: 0,
+    isPinned: false,
+    tags: Array.isArray(d.tags) ? d.tags as string[] : [],
+    coverMediaEntityId: (d.coverMediaEntityId as string) ?? undefined,
+    status: 'active',
+  };
+}
 
-  if (!Array.isArray(searchResults) || searchResults.length === 0) return [];
-
-  const items: T[] = [];
-  for (const item of searchResults) {
-    if (!item || typeof item !== 'object') continue;
-    const r = item as Record<string, unknown>;
-    const itemName = typeof r.name === 'string' ? r.name : '';
-    const itemId = typeof r.identifier === 'string' ? r.identifier : '';
-    if (!itemName || !itemId) continue;
-
-    try {
-      // The resource itself IS the item (post, poll, project) — not a wrapper
-      const data = await fetchQdnJson<T & { status?: string }>(QDN_SERVICE, itemName, itemId);
-      if (data && typeof data === 'object' && data.status !== 'deleted') {
-        items.push(data as T);
-      }
-    } catch {
-      // Skip resources that can't be fetched/parsed
-    }
-  }
-
-  return items;
-};
+/** Convert a validated QDN comment envelope to the UI Comment type. */
+function toCommentView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number } }; entityId: string; publisherName: string; publisherAddress: string }): Comment {
+  const d = env.envelope.data;
+  return {
+    id: env.entityId,
+    postId: (d.parentEntityId as string) ?? '',
+    authorName: env.publisherName,
+    authorAddress: env.publisherAddress,
+    content: (d.content as string) ?? '',
+    createdAt: env.envelope.metadata.created
+      ? new Date(env.envelope.metadata.created).toISOString()
+      : new Date().toISOString(),
+    parentCommentId: null,
+  };
+}
 
 // ---- API Definition ----
 
 export const qortiumApi = createApi({
   reducerPath: 'qortiumApi',
   baseQuery: fakeBaseQuery<string>(),
-  tagTypes: ['Posts', 'Polls', 'Projects', 'FundBalance', 'FundTransactions', 'Comments', 'SinglePost', 'RoleRegistry', 'Notifications'],
+  tagTypes: ['Posts', 'Polls', 'FundBalance', 'FundTransactions', 'Comments', 'SinglePost', 'RoleRegistry'],
   endpoints: (builder) => ({
 
-    // ===== POSTS =====
+    // ===== POSTS (migrated — validated runtime + tombstones + media resolution) =====
     getPosts: builder.query<Post[], void>({
-      queryFn: () => queryFn(() => searchAndFetch<Post>('post-')),
+      queryFn: () => queryFn(async () => {
+        const [postResult] = await Promise.all([
+          fetchValidatedPosts(),
+          fetchValidatedTombstones(),
+        ]);
+        if (postResult.status === 'unavailable') {
+          throw new Error(postResult.reason);
+        }
+        const composition = getTombstoneComposition();
+        const posts: Post[] = [];
+        for (const p of postResult.items) {
+          // Apply tombstone state
+          const targetOwner: TargetOwnerInfo = {
+            ownerName: p.publisherName,
+            ownerAddress: p.publisherAddress,
+            entityId: p.entityId,
+            resourceFamily: 'qucp-post',
+          };
+          const tombstoneState = composition?.getEffectiveState('qucp-post', p.entityId, targetOwner);
+          const isDeleted = tombstoneState?.state === 'deleted-by-owner';
+
+          const post = toPostView(p);
+          if (isDeleted) continue;
+
+          // Resolve media reference through full validated chain
+          const coverMediaId = (p.envelope.data as Record<string, unknown>).coverMediaEntityId as string | undefined;
+          if (coverMediaId) {
+            const resolution = await fetchMediaReference(coverMediaId);
+            const view = toResolvedMediaView(resolution, isDeleted);
+            if (view.status === 'resolved') {
+              post.coverMediaUrl = `qdn://${view.service}/${view.publisherName}/${view.identifier}`;
+            }
+          }
+          posts.push(post);
+        }
+        return posts;
+      }),
       providesTags: ['Posts'],
     }),
 
-    // ===== POLLS =====
+    // ===== POLLS (not yet migrated) =====
     getPolls: builder.query<Poll[], void>({
-      queryFn: () => queryFn(() => searchAndFetch<Poll>('poll-')),
+      queryFn: () => queryFn(async () => {
+        const results = await requestQortium<unknown[]>({
+          action: 'SEARCH_QDN_RESOURCES',
+          service: QDN_SERVICE,
+          identifier: 'poll-',
+          prefix: true,
+          mode: 'ALL',
+          reverse: true,
+          limit: 50,
+          offset: 0,
+        });
+        if (!Array.isArray(results) || results.length === 0) return [];
+        const items: Poll[] = [];
+        for (const item of results) {
+          if (!item || typeof item !== 'object') continue;
+          const r = item as Record<string, unknown>;
+          const n = typeof r.name === 'string' ? r.name : '';
+          const id = typeof r.identifier === 'string' ? r.identifier : '';
+          if (!n || !id) continue;
+          try {
+            const data = await requestQortium<unknown>({
+              action: 'FETCH_QDN_RESOURCE',
+              service: QDN_SERVICE, name: n, identifier: id,
+            });
+            if (data && typeof data === 'object') {
+              items.push(data as Poll);
+            }
+          } catch { /* skip */ }
+        }
+        return items;
+      }),
       providesTags: ['Polls'],
     }),
 
-    // ===== PROJECTS =====
-    getProjects: builder.query<Project[], void>({
-      queryFn: () => queryFn(() => searchAndFetch<Project>('proj-')),
-      providesTags: ['Projects'],
-    }),
-
-    // ===== FUND BALANCE =====
+    // ===== FUND BALANCE (unchanged) =====
     getFundBalance: builder.query<number, void>({
       queryFn: () => queryFn(async () => {
         const raw = await requestQortium<unknown>({ action: 'GET_BALANCE', address: FUND_ADDRESS });
@@ -121,7 +190,7 @@ export const qortiumApi = createApi({
       providesTags: ['FundBalance'],
     }),
 
-    // ===== FUND TRANSACTIONS =====
+    // ===== FUND TRANSACTIONS (unchanged) =====
     getFundTransactions: builder.query<FundTransaction[], void>({
       queryFn: () => queryFn(async () => {
         const raw = await requestQortium<unknown>({
@@ -144,53 +213,83 @@ export const qortiumApi = createApi({
       providesTags: ['FundTransactions'],
     }),
 
-    // ===== SINGLE POST =====
+    // ===== SINGLE POST (migrated — validated runtime) =====
     getPost: builder.query<PostWithComments, string>({
       queryFn: (postId) => queryFn(async () => {
-        const name = await resolveQdnName();
-        // Fetch the specific post resource: DOCUMENT / <name> / post-<postId>
-        const data = await fetchQdnJson<Post>(QDN_SERVICE, name, `post-${postId}`);
-        const post = data && typeof data === 'object' && 'title' in data ? data as Post : null;
-        if (!post) throw new Error(`Post ${postId} not found.`);
-        // Fetch comments
-        const comments = await (async () => {
-          try {
-            const cData = await fetchQdnJson<{ comments?: Comment[] }>(QDN_SERVICE, name, `comments-${postId}`);
-            return extractArray<Comment>(cData, 'comments');
-          } catch { return []; }
-        })();
+        const result = await fetchValidatedPosts();
+        if (result.status === 'unavailable') throw new Error(result.reason);
+        const found = result.items.find((p) => p.entityId === postId);
+        if (!found) throw new Error(`Post ${postId} not found.`);
+
+        const post = toPostView(found);
+
+        // Fetch comments for this post from validated runtime
+        const commentResult = await fetchValidatedComments();
+        const comments: Comment[] = [];
+        if (commentResult.status !== 'unavailable') {
+          for (const c of commentResult.items) {
+            const d = c.envelope.data as Record<string, unknown>;
+            if (d.parentEntityId === postId) {
+              comments.push(toCommentView(c));
+            }
+          }
+        }
+
         return { ...post, comments };
       }),
       providesTags: (_r, _e, postId) => [{ type: 'SinglePost', id: postId }],
     }),
 
-    // ===== COMMENTS =====
+    // ===== COMMENTS (migrated — validated runtime) =====
     getComments: builder.query<Comment[], string>({
       queryFn: (postId) => queryFn(async () => {
-        const name = await resolveQdnName();
-        const data = await fetchQdnJson<{ comments?: Comment[] }>(QDN_SERVICE, name, `comments-${postId}`);
-        return extractArray<Comment>(data, 'comments');
+        const result = await fetchValidatedComments();
+        if (result.status === 'unavailable') throw new Error(result.reason);
+        return result.items
+          .filter((c) => {
+            const d = c.envelope.data as Record<string, unknown>;
+            return d.parentEntityId === postId;
+          })
+          .map(toCommentView);
       }),
       providesTags: (_r, _e, postId) => [{ type: 'Comments', id: postId }],
     }),
 
-    // ===== ADD COMMENT =====
+    // ===== ADD COMMENT (migrated — new identifier) =====
     addComment: builder.mutation<
       Comment,
       { postId: string; content: string; authorName: string; authorAddress: string; parentCommentId?: string | null }
     >({
       queryFn: async (input) => {
         try {
-          const comment: Comment = {
-            id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            postId: input.postId, authorName: input.authorName, authorAddress: input.authorAddress,
-            content: input.content, createdAt: new Date().toISOString(), parentCommentId: input.parentCommentId ?? null,
-          };
-          await publishJsonResource({
-            service: 'DOCUMENT', identifier: `comment-${input.postId}-${comment.id}`,
-            payload: comment, title: `Comment by ${input.authorName}`,
-            description: input.content.slice(0, 200), filename: `${comment.id}.json`,
+          const entityId = `pc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const payload = buildCommentPayload({
+            entityId,
+            parentEntityId: input.postId,
+            content: input.content,
+            authorName: input.authorName,
+            authorAddress: input.authorAddress,
           });
+
+          const identifier = buildQucpIdentifier('qucp-post-comment', entityId);
+          await publishJsonResource({
+            service: 'DOCUMENT',
+            identifier,
+            payload,
+            title: `Comment by ${input.authorName}`,
+            description: input.content.slice(0, 200),
+            filename: `${entityId}.json`,
+          });
+
+          const comment: Comment = {
+            id: entityId,
+            postId: input.postId,
+            authorName: input.authorName,
+            authorAddress: input.authorAddress,
+            content: input.content,
+            createdAt: new Date().toISOString(),
+            parentCommentId: input.parentCommentId ?? null,
+          };
           return { data: comment };
         } catch (err) {
           return { error: err instanceof Error ? err.message : 'Failed to publish comment.' };
@@ -199,7 +298,7 @@ export const qortiumApi = createApi({
       invalidatesTags: (_r, _e, { postId }) => [{ type: 'Comments', id: postId }, { type: 'SinglePost', id: postId }, 'Posts'],
     }),
 
-    // ===== VOTE ON POLL =====
+    // ===== VOTE ON POLL (not yet migrated) =====
     votePoll: builder.mutation<Poll, { pollId: string; optionIds: string[]; voterAddress: string }>({
       queryFn: async (input) => {
         try {
@@ -208,11 +307,15 @@ export const qortiumApi = createApi({
             payload: { pollId: input.pollId, optionIds: input.optionIds, voter: input.voterAddress, votedAt: new Date().toISOString() },
             title: `Vote on ${input.pollId}`, filename: `vote-${input.pollId}.json`,
           });
-          const name = await resolveQdnName();
-          const data = await fetchQdnJson<Poll>(QDN_SERVICE, name, `poll-${input.pollId}`);
-          const updated = data && typeof data === 'object' && 'question' in data ? data as Poll : null;
-          if (!updated) throw new Error('Poll not found after voting.');
-          return { data: updated };
+          const name = await getOwnerName();
+          const data = await requestQortium<unknown>({
+            action: 'FETCH_QDN_RESOURCE',
+            service: QDN_SERVICE, name, identifier: `poll-${input.pollId}`,
+          });
+          if (data && typeof data === 'object' && 'question' in (data as Record<string, unknown>)) {
+            return { data: data as Poll };
+          }
+          throw new Error('Poll not found after voting.');
         } catch (err) {
           return { error: err instanceof Error ? err.message : 'Failed to submit vote.' };
         }
@@ -220,7 +323,7 @@ export const qortiumApi = createApi({
       invalidatesTags: (_r, _e, { pollId }) => [{ type: 'Polls' }, { type: 'SinglePost', id: pollId }],
     }),
 
-    // ===== PUBLISH RESOURCE =====
+    // ===== PUBLISH RESOURCE (migrated for posts, legacy for others) =====
     publishResource: builder.mutation<
       { success: boolean; resourceId: string },
       { service: string; identifier: string; title: string; description: string; data: unknown; filename?: string }
@@ -237,10 +340,10 @@ export const qortiumApi = createApi({
           return { error: err instanceof Error ? err.message : 'Failed to publish resource.' };
         }
       },
-      invalidatesTags: ['Posts', 'Polls', 'Projects'],
+      invalidatesTags: ['Posts', 'Polls'],
     }),
 
-    // ===== ROLE REGISTRY =====
+    // ===== ROLE REGISTRY (unchanged) =====
     getRoleRegistry: builder.query<RoleRegistry, void>({
       queryFn: () => queryFn(() => fetchRoleRegistry()),
       providesTags: ['RoleRegistry'],
@@ -257,41 +360,63 @@ export const qortiumApi = createApi({
       invalidatesTags: ['RoleRegistry'],
     }),
 
-    // ===== NOTIFICATIONS =====
-    getNotifications: builder.query<Notification[], void>({
-      queryFn: () => queryFn(() => fetchNotifications()),
-      providesTags: ['Notifications'],
-    }),
-
-    markNotificationRead: builder.mutation<void, Notification>({
-      queryFn: async (notif) => {
-        try { await markNotificationRead(notif); return { data: undefined }; }
-        catch (err) { return { error: err instanceof Error ? err.message : 'Failed.' }; }
-      },
-      invalidatesTags: ['Notifications'],
-    }),
-
-    markAllNotificationsRead: builder.mutation<void, Notification[]>({
-      queryFn: async (notifs) => {
-        try { await markAllNotificationsRead(notifs); return { data: undefined }; }
-        catch (err) { return { error: err instanceof Error ? err.message : 'Failed.' }; }
-      },
-      invalidatesTags: ['Notifications'],
-    }),
-
-    // ===== DELETE POST (tombstone pattern) =====
-    deletePost: builder.mutation<void, { postId: string; currentData: Record<string, unknown> }>({
+    // ===== DELETE POST (owner tombstone operation) =====
+    deletePost: builder.mutation<void, { postId: string; ownerName: string; ownerAddress: string }>({
       queryFn: async (input) => {
         try {
-          await deleteResource({
+          const tombstoneId = `ot-${input.postId}-${Date.now()}`;
+          const identifier = await buildOwnerTombstoneIdentifier(
+            'qucp-post', input.postId, input.ownerAddress,
+          );
+          const payload = buildTombstonePayload({
+            operationId: tombstoneId,
+            targetFamily: 'qucp-post',
+            targetEntityId: input.postId,
+            ownerName: input.ownerName,
+            ownerAddress: input.ownerAddress,
+            action: 'delete',
+          });
+          await publishJsonResource({
             service: 'DOCUMENT',
-            identifier: `post-${input.postId}`,
-            originalPayload: input.currentData,
-            title: input.currentData.title as string,
+            identifier,
+            payload,
+            title: `Tombstone: ${input.postId}`,
+            filename: `${tombstoneId}.json`,
           });
           return { data: undefined };
         } catch (err) {
           return { error: err instanceof Error ? err.message : 'Failed to delete post.' };
+        }
+      },
+      invalidatesTags: ['Posts', 'SinglePost'],
+    }),
+
+    // ===== RESTORE POST (owner tombstone operation) =====
+    restorePost: builder.mutation<void, { postId: string; ownerName: string; ownerAddress: string }>({
+      queryFn: async (input) => {
+        try {
+          const tombstoneId = `ot-${input.postId}-${Date.now()}`;
+          const identifier = await buildOwnerTombstoneIdentifier(
+            'qucp-post', input.postId, input.ownerAddress,
+          );
+          const payload = buildTombstonePayload({
+            operationId: tombstoneId,
+            targetFamily: 'qucp-post',
+            targetEntityId: input.postId,
+            ownerName: input.ownerName,
+            ownerAddress: input.ownerAddress,
+            action: 'restore',
+          });
+          await publishJsonResource({
+            service: 'DOCUMENT',
+            identifier,
+            payload,
+            title: `Restore: ${input.postId}`,
+            filename: `${tombstoneId}.json`,
+          });
+          return { data: undefined };
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : 'Failed to restore post.' };
         }
       },
       invalidatesTags: ['Posts', 'SinglePost'],
@@ -302,7 +427,6 @@ export const qortiumApi = createApi({
 export const {
   useGetPostsQuery,
   useGetPollsQuery,
-  useGetProjectsQuery,
   useGetFundBalanceQuery,
   useGetFundTransactionsQuery,
   useGetPostQuery,
@@ -312,8 +436,6 @@ export const {
   usePublishResourceMutation,
   useGetRoleRegistryQuery,
   useUpdateRoleRegistryMutation,
-  useGetNotificationsQuery,
-  useMarkNotificationReadMutation,
-  useMarkAllNotificationsReadMutation,
   useDeletePostMutation,
+  useRestorePostMutation,
 } = qortiumApi;

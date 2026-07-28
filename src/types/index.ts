@@ -53,7 +53,10 @@ export interface Post {
   likesCount: number;
   isPinned: boolean;
   tags?: string[];
-  imageUrl?: string;
+  /** Entity ID of a qucp-media-reference resource for the cover image. No arbitrary URLs. */
+  coverMediaEntityId?: string;
+  /** Resolved QDN render URL from validated media reference. Only present after resolution. */
+  coverMediaUrl?: string;
   status?: 'active' | 'deleted';
 }
 

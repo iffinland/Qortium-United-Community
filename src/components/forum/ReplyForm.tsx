@@ -4,7 +4,6 @@ import { useState, type FormEvent } from 'react';
 import { Send, X } from 'lucide-react';
 import { useAddReplyMutation } from '../../store/api/forumApi';
 import { useAppSelector } from '../../store';
-import { createNotification } from '../../services/qortium/notificationService';
 
 interface ReplyFormProps {
   threadId: string;
@@ -38,11 +37,6 @@ const ReplyForm = ({
       }).unwrap();
       setContent('');
       onCancel?.();
-      createNotification({
-        type: 'forum_reply',
-        text: `${name || 'Someone'} replied in the forum`,
-        link: `/forum/thread/${threadId}`,
-      });
     } catch { /* RTK handles */ }
     finally { setIsSubmitting(false); }
   };

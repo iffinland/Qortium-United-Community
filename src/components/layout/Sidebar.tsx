@@ -1,6 +1,8 @@
 // ===== Sidebar Component =====
 
-import { useGetPollsQuery, useGetProjectsQuery, useGetPostsQuery } from '../../store/api/qortiumApi';
+import { useGetPollsQuery, useGetPostsQuery } from '../../store/api/qortiumApi';
+import { useGetProjectsQuery } from '../../store/api/projectApi';
+import { useAppSelector } from '../../store';
 import { BarChart3, FolderKanban, Users, Calendar, TrendingUp, Activity, MessageCircle, FileText, Vote } from 'lucide-react';
 
 interface ActivityItem {
@@ -12,11 +14,13 @@ interface ActivityItem {
 }
 
 const Sidebar = () => {
+  const walletAddress = useAppSelector((state) => state.auth.address ?? '');
   const { data: polls } = useGetPollsQuery();
-  const { data: projects } = useGetProjectsQuery();
+  const { data: projectData } = useGetProjectsQuery(walletAddress);
   const { data: posts } = useGetPostsQuery();
 
-  const activeProjects = projects?.filter((p) => p.status === 'active') ?? [];
+  const projectList = projectData?.projects ?? [];
+  const activeProjects = projectList.filter((p) => p.status === 'active');
   const activePolls = polls?.filter((p) => !p.closesAt || new Date(p.closesAt) > new Date()) ?? [];
 
   // Build recent activity feed from posts
@@ -40,6 +44,7 @@ const Sidebar = () => {
   };
 
   const timeAgo = (dateStr: string) => {
+    // eslint-disable-next-line react-hooks/purity -- timeAgo is intentionally impure to show relative time; called infrequently on static data
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `${mins}m ago`;
@@ -142,17 +147,9 @@ const Sidebar = () => {
                 <p className="text-sm font-medium leading-snug text-[var(--color-text-primary)]">
                   {project.title}
                 </p>
-                <div className="flex items-center gap-2">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-emerald-500 transition-all"
-                      style={{ width: `${project.progress}%` }}
-                    />
-                  </div>
-                  <span className="text-xs tabular-nums text-[var(--color-text-muted)]">
-                    {project.progress}%
-                  </span>
-                </div>
+                <span className="text-xs text-[var(--color-text-muted)]">
+                  {project.status}
+                </span>
               </div>
             ))}
           </div>

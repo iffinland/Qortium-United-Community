@@ -169,10 +169,10 @@ const HomePage = ({ searchQuery = '' }: HomePageProps) => {
           )}
 
           {/* Content preview */}
-          {post.imageUrl && (
+          {post.coverMediaUrl && (
             <div className="mb-3 overflow-hidden rounded-lg">
               <img
-                src={post.imageUrl}
+                src={post.coverMediaUrl}
                 alt={post.title}
                 className="h-40 w-full object-cover transition hover:scale-105"
                 loading="lazy"

@@ -5,7 +5,8 @@ import { Bug, Lightbulb, HelpCircle, MessageSquare } from 'lucide-react';
 import { useCreateTicketMutation } from '../../store/api/supportApi';
 import { useAppSelector } from '../../store';
 import RichTextEditor from '../forum/RichTextEditor';
-import type { TicketType, TicketPriority } from '../../types/support';
+import type { TicketType } from '../../types/support';
+import { useGetCategoriesQuery } from '../../store/api/supportApi';
 
 interface NewTicketFormProps {
   onCancel: () => void;
@@ -23,19 +24,22 @@ const NewTicketForm = ({ onCancel, onSuccess }: NewTicketFormProps) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<TicketType>('bug');
-  const [priority, setPriority] = useState<TicketPriority>('medium');
+  const [categoryId, setCategoryId] = useState('');
   const [createTicket, { isLoading }] = useCreateTicketMutation();
   const { name, address, isAuthenticated } = useAppSelector((s) => s.auth);
+  const { data: catData, isLoading: catLoading } = useGetCategoriesQuery();
+  const activeCategories = (catData?.categories ?? []).filter(c => c.isActive);
+  const completeness = catData?.completeness;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim() || isLoading) return;
+    if (!title.trim() || !description.trim() || !categoryId || isLoading) return;
     try {
       await createTicket({
         title: title.trim(),
         description: description.trim(),
         type,
-        priority,
+        categoryId,
         authorName: name || 'Anonymous',
         authorAddress: address || '',
       }).unwrap();
@@ -52,6 +56,26 @@ const NewTicketForm = ({ onCancel, onSuccess }: NewTicketFormProps) => {
       </div>
     );
   }
+
+  if (catLoading) {
+    return (
+      <div className="rounded-xl bg-[var(--color-surface-card)] p-5 shadow-sm">
+        <div className="animate-pulse space-y-3">
+          <div className="h-5 w-40 rounded bg-slate-200" />
+          <div className="h-10 rounded bg-slate-100" />
+        </div>
+      </div>
+    );
+  }
+
+  // Determine category state for UI
+  const categoryState: 'unavailable' | 'incomplete' | 'empty' | 'ready' =
+    completeness === 'unavailable' ? 'unavailable'
+    : completeness === 'incomplete' ? 'incomplete'
+    : activeCategories.length === 0 ? 'empty'
+    : 'ready';
+
+  const publicationBlocked = categoryState === 'unavailable' || categoryState === 'empty';
 
   return (
     <form onSubmit={handleSubmit} className="rounded-xl bg-[var(--color-surface-card)] p-5 shadow-sm">
@@ -100,28 +124,38 @@ const NewTicketForm = ({ onCancel, onSuccess }: NewTicketFormProps) => {
         />
       </div>
 
-      <div className="mb-3 flex items-center gap-2">
-        <label className="text-xs font-medium text-[var(--color-text-muted)]">Priority:</label>
-        {(['low', 'medium', 'high'] as TicketPriority[]).map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPriority(p)}
-            className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition ${
-              priority === p
-                ? p === 'high' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
-                : p === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
-                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                : 'bg-slate-50 text-[var(--color-text-muted)] hover:bg-slate-100 dark:bg-slate-800'
-            }`}
-          >
-            {p}
-          </button>
-        ))}
+      <div className="mb-3">
+        <label className="mb-1 block text-xs font-medium text-[var(--color-text-muted)]">Category:</label>
+        {categoryState === 'unavailable' && (
+          <p className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
+            Support categories are currently unavailable. Please try again later.
+          </p>
+        )}
+        {categoryState === 'empty' && (
+          <p className="text-xs text-amber-600">
+            No active support categories are configured. An admin must create categories first.
+          </p>
+        )}
+        {categoryState === 'incomplete' && (
+          <p className="mb-1 text-xs text-amber-600">
+            Category list may be incomplete — results shown below.
+          </p>
+        )}
+        {(categoryState === 'ready' || categoryState === 'incomplete') && activeCategories.length > 0 && (
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full rounded-lg border border-[var(--color-border-subtle)] bg-white p-2.5 text-sm dark:bg-slate-900 dark:text-white" required>
+            <option value="">Select a category...</option>
+            {activeCategories.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+          </select>
+        )}
+        {categoryState === 'incomplete' && activeCategories.length === 0 && (
+          <p className="text-xs text-amber-600">
+            No active categories found in incomplete results. Retry when discovery completes.
+          </p>
+        )}
       </div>
 
       <div className="flex gap-2">
-        <button type="submit" disabled={!title.trim() || !description.trim() || isLoading}
+        <button type="submit" disabled={!title.trim() || !description.trim() || !categoryId || isLoading || publicationBlocked}
           className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:opacity-50">
           {isLoading ? 'Submitting...' : 'Submit Ticket'}
         </button>

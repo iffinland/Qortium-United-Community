@@ -1,13 +1,8 @@
 // ===== Toast Notification System =====
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
+import { ToastContext } from './toastContext';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -16,12 +11,6 @@ interface Toast {
   type: ToastType;
   message: string;
 }
-
-interface ToastContextValue {
-  addToast: (type: ToastType, message: string) => void;
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null);
 
 let toastId = 0;
 
@@ -81,8 +70,4 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useToast = (): ToastContextValue => {
-  const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error('useToast must be used within ToastProvider');
-  return ctx;
-};
+export default ToastProvider;

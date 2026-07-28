@@ -14,7 +14,6 @@ import {
   Moon,
   Search,
   User,
-  Bell,
   Wifi,
   WifiOff,
   MessageSquare,
@@ -23,10 +22,8 @@ import {
   Copy,
   Check,
   ExternalLink,
-  CheckCheck,
 } from 'lucide-react';
 import { useAppSelector } from '../../store';
-import { useGetNotificationsQuery, useMarkNotificationReadMutation, useMarkAllNotificationsReadMutation } from '../../store/api/qortiumApi';
 import { isQortiumBridgeAvailable, requestQortium } from '../../services/qortium/qortiumClient';
 import UserRoleBadge from '../common/UserRoleBadge';
 import FundBalance from '../common/FundBalance';
@@ -63,40 +60,35 @@ const Header = ({
 
   const bridgeAvailable = isQortiumBridgeAvailable();
 
-  // Real notifications from QDN
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
-  const { data: notifications = [] } = useGetNotificationsQuery();
-  const [markRead] = useMarkNotificationReadMutation();
-  const [markAllRead] = useMarkAllNotificationsReadMutation();
-  const unreadCount = notifications.filter((n) => !n.read).length;
   const [userBalance, setUserBalance] = useState<number | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
 
   const { address } = useAppSelector((s) => s.auth);
 
   // Fetch user balance when popup opens
   useEffect(() => {
-    if (showProfilePopup && address && userBalance === null && !balanceLoading) {
-      setBalanceLoading(true);
-      requestQortium<unknown>({ action: 'GET_BALANCE', address })
-        .then((raw) => {
-          if (typeof raw === 'number') setUserBalance(raw);
-          else if (typeof raw === 'string') { const p = Number(raw); if (Number.isFinite(p)) setUserBalance(p / 1e8); }
-          else if (raw && typeof raw === 'object') {
-            const r = raw as Record<string, unknown>;
-            for (const k of ['balance', 'value', 'amount', 'confirmedBalance']) {
-              const v = r[k];
-              if (typeof v === 'number') { setUserBalance(v / 1e8); break; }
-              if (typeof v === 'string') { const p = Number(v); if (Number.isFinite(p)) { setUserBalance(p / 1e8); break; } }
-            }
+    if (!showProfilePopup || !address) return;
+    let cancelled = false;
+    requestQortium<unknown>({ action: 'GET_BALANCE', address })
+      .then((raw) => {
+        if (cancelled) return;
+        if (typeof raw === 'number') setUserBalance(raw);
+        else if (typeof raw === 'string') { const p = Number(raw); if (Number.isFinite(p)) setUserBalance(p / 1e8); }
+        else if (raw && typeof raw === 'object') {
+          const r = raw as Record<string, unknown>;
+          for (const k of ['balance', 'value', 'amount', 'confirmedBalance']) {
+            const v = r[k];
+            if (typeof v === 'number') { setUserBalance(v / 1e8); break; }
+            if (typeof v === 'string') { const p = Number(v); if (Number.isFinite(p)) { setUserBalance(p / 1e8); break; } }
           }
-        })
-        .catch(() => setUserBalance(null))
-        .finally(() => setBalanceLoading(false));
-    }
-  }, [showProfilePopup, address, userBalance, balanceLoading]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setUserBalance(null);
+      });
+    return () => { cancelled = true; };
+  }, [showProfilePopup, address]);
 
   const copyAddress = () => {
     if (address) {
@@ -168,7 +160,7 @@ const Header = ({
           )}
         </div>
 
-        {/* Right side: Fund balance (desktop) + theme + notifications */}
+        {/* Right side: Fund balance (desktop) + theme */}
         <div className="flex items-center gap-1">
           <FundBalance />
 
@@ -178,72 +170,6 @@ const Header = ({
               {bridgeAvailable ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
             </span>
           </span>
-
-          {/* Notifications */}
-          <div className="relative">
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
-            >
-              <Bell className="h-4 w-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-            {showNotifications && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
-                <div className="absolute right-0 top-full z-[60] mt-1 w-72 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-card)] shadow-xl dark:text-[var(--color-text-primary)]">
-                  <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2.5">
-                    <h3 className="text-xs font-semibold">Notifications</h3>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={() => markAllRead(notifications)}
-                        className="flex items-center gap-1 text-[10px] text-cyan-600 transition hover:text-cyan-700 dark:text-cyan-400"
-                      >
-                        <CheckCheck className="h-3 w-3" />
-                        Mark all read
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <p className="px-4 py-6 text-center text-xs text-[var(--color-text-muted)]">No notifications yet.</p>
-                    ) : (
-                      notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          className={`border-b border-[var(--color-border-subtle)] transition last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${!n.read ? 'bg-cyan-50/30 dark:bg-cyan-950/20' : ''}`}
-                        >
-                          {n.link ? (
-                            <Link
-                              to={n.link}
-                              onClick={() => { markRead(n); setShowNotifications(false); }}
-                              className="block px-4 py-2.5"
-                            >
-                              <p className="text-sm">{n.text}</p>
-                              <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
-                                {new Date(n.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            </Link>
-                          ) : (
-                            <div className="px-4 py-2.5">
-                              <p className="text-sm">{n.text}</p>
-                              <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
-                                {new Date(n.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
 
           {/* Dark mode toggle */}
           <button
@@ -342,11 +268,11 @@ const Header = ({
                   {/* Balance */}
                   <div className="mb-3 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50">
                     <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">Balance</p>
-                    {balanceLoading ? (
+                    {userBalance === null ? (
                       <div className="h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
                     ) : (
                       <p className="text-sm font-semibold tabular-nums text-emerald-600">
-                        {userBalance !== null ? `${userBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })} QORT` : '—'}
+                        {userBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })} QORT
                       </p>
                     )}
                   </div>

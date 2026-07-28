@@ -92,10 +92,10 @@ const PostDetailPage = () => {
         </h1>
 
         {/* Cover image */}
-        {post.imageUrl && (
+        {post.coverMediaUrl && (
           <div className="mb-4 overflow-hidden rounded-xl">
             <img
-              src={post.imageUrl}
+              src={post.coverMediaUrl}
               alt={post.title}
               className="max-h-96 w-full object-cover"
             />

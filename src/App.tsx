@@ -11,6 +11,7 @@ import { ToastProvider } from './components/common/ToastProvider';
 // Lazy-loaded pages for code splitting
 const HomePage = lazy(() => import('./pages/HomePage'));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
+const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const PollsPage = lazy(() => import('./pages/PollsPage'));
 const DonationsPage = lazy(() => import('./pages/DonationsPage'));
 const PostDetailPage = lazy(() => import('./pages/PostDetailPage'));
@@ -70,6 +71,7 @@ const AppRoutes = () => {
       <Routes>
         <Route path="/" element={<Suspense fallback={<PageLoader />}><HomePage searchQuery={searchQuery} /></Suspense>} />
         <Route path="/projects" element={<Suspense fallback={<PageLoader />}><ProjectsPage /></Suspense>} />
+        <Route path="/project/:entityId" element={<Suspense fallback={<PageLoader />}><ProjectDetailPage /></Suspense>} />
         <Route path="/polls" element={<Suspense fallback={<PageLoader />}><PollsPage /></Suspense>} />
         <Route path="/donations" element={<Suspense fallback={<PageLoader />}><DonationsPage /></Suspense>} />
         <Route path="/post/:id" element={<Suspense fallback={<PageLoader />}><PostDetailPage /></Suspense>} />

@@ -8,6 +8,8 @@ import { qortiumApi } from './api/qortiumApi';
 import { forumApi } from './api/forumApi';
 import { supportApi } from './api/supportApi';
 import { wikiApi } from './api/wikiApi';
+import { pollApi } from './api/pollApi';
+import { projectApi } from './api/projectApi';
 
 export const store = configureStore({
   reducer: {
@@ -17,13 +19,17 @@ export const store = configureStore({
     [forumApi.reducerPath]: forumApi.reducer,
     [supportApi.reducerPath]: supportApi.reducer,
     [wikiApi.reducerPath]: wikiApi.reducer,
+    [pollApi.reducerPath]: pollApi.reducer,
+    [projectApi.reducerPath]: projectApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
       qortiumApi.middleware,
       forumApi.middleware,
       supportApi.middleware,
-      wikiApi.middleware
+      wikiApi.middleware,
+      pollApi.middleware,
+      projectApi.middleware,
     ),
   devTools: import.meta.env.DEV,
 });

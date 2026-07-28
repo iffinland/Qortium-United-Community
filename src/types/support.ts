@@ -1,8 +1,6 @@
-// ===== Support Ticket Types =====
+// ===== Support Types =====
 
 export type TicketType = 'bug' | 'feature' | 'question' | 'general';
-export type TicketStatus = 'open' | 'in-progress' | 'resolved' | 'closed';
-export type TicketPriority = 'low' | 'medium' | 'high';
 
 export interface TicketResponse {
   id: string;
@@ -11,7 +9,14 @@ export interface TicketResponse {
   authorAddress: string;
   content: string;
   createdAt: string;
-  isOfficial: boolean;
+}
+
+export interface SupportCategory {
+  id: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder?: number;
 }
 
 export interface Ticket {
@@ -19,11 +24,13 @@ export interface Ticket {
   title: string;
   description: string;
   type: TicketType;
-  status: TicketStatus;
-  priority: TicketPriority;
+  categoryId: string;
+  categoryName?: string;
   authorName: string;
   authorAddress: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
+  /** True when createdAt was derived from QDN metadata (not fabricated). Undefined when fabricated. */
+  timestampFromQdn?: boolean;
   responses: TicketResponse[];
 }

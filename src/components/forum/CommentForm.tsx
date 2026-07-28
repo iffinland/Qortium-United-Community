@@ -4,7 +4,6 @@ import { useState, type FormEvent } from 'react';
 import { Send, X } from 'lucide-react';
 import { useAddCommentMutation } from '../../store/api/qortiumApi';
 import { useAppSelector } from '../../store';
-import { createNotification } from '../../services/qortium/notificationService';
 
 interface CommentFormProps {
   postId: string;
@@ -42,11 +41,6 @@ const CommentForm = ({
       }).unwrap();
       setContent('');
       onCancelReply?.();
-      createNotification({
-        type: 'new_comment',
-        text: `${name || 'Someone'} commented on a post`,
-        link: `/post/${postId}`,
-      });
     } catch {
       /* error handled by RTK Query */
     } finally {

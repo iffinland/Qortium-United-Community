@@ -1,7 +1,7 @@
 // ===== Thread Reply Tree Component =====
 
 import { useState } from 'react';
-import { Reply, Heart, ChevronDown, ChevronRight } from 'lucide-react';
+import { Reply, ChevronDown, ChevronRight } from 'lucide-react';
 import type { ThreadReply } from '../../types/forum';
 import ReplyForm from './ReplyForm';
 
@@ -29,8 +29,6 @@ const ThreadReplyTree = ({
 }: ThreadReplyTreeProps) => {
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [liked, setLiked] = useState<Set<string>>(new Set());
-  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
 
   const levelReplies = replies.filter((r) => r.parentReplyId === parentId);
   if (levelReplies.length === 0) return null;
@@ -43,8 +41,6 @@ const ThreadReplyTree = ({
         const children = replies.filter((r) => r.parentReplyId === reply.id);
         const hasChildren = children.length > 0;
         const isCollapsed = collapsed.has(reply.id);
-        const isLiked = liked.has(reply.id);
-        const likeDelta = likeCounts[reply.id] ?? 0;
 
         return (
           <div key={reply.id} className="relative">
@@ -106,27 +102,6 @@ const ThreadReplyTree = ({
                   {reply.content}
                 </p>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() =>
-                      setLiked((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(reply.id)) {
-                          next.delete(reply.id);
-                          setLikeCounts((c) => ({ ...c, [reply.id]: (c[reply.id] ?? 0) - 1 }));
-                        } else {
-                          next.add(reply.id);
-                          setLikeCounts((c) => ({ ...c, [reply.id]: (c[reply.id] ?? 0) + 1 }));
-                        }
-                        return next;
-                      })
-                    }
-                    className={`flex items-center gap-1 text-xs transition ${
-                      isLiked ? 'text-rose-500' : 'text-[var(--color-text-muted)] hover:text-rose-400'
-                    }`}
-                  >
-                    <Heart className={`h-3 w-3 ${isLiked ? 'fill-current' : ''}`} />
-                    {reply.likes + likeDelta}
-                  </button>
                   <button
                     onClick={() =>
                       setReplyingTo(replyingTo === reply.id ? null : reply.id)

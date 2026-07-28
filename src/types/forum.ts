@@ -4,7 +4,7 @@ export interface ForumCategory {
   id: string;
   name: string;
   description: string;
-  icon: string; // emoji or icon name
+  icon: string;
   sortOrder: number;
   threadCount: number;
   lastActivityAt: string;
@@ -19,10 +19,6 @@ export interface ForumThread {
   authorAddress: string;
   createdAt: string;
   updatedAt?: string;
-  replyCount: number;
-  viewCount: number;
-  isPinned: boolean;
-  isLocked: boolean;
   tags?: string[];
 }
 
@@ -34,7 +30,6 @@ export interface ThreadReply {
   content: string;
   createdAt: string;
   parentReplyId: string | null;
-  likes: number;
 }
 
 export interface ThreadWithReplies extends ForumThread {

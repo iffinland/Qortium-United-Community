@@ -1,6 +1,6 @@
 // ===== Wiki Edit Page =====
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, type FormEvent, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save } from 'lucide-react';
 import { useGetArticleQuery, useGetCategoriesQuery, useSaveArticleMutation } from '../store/api/wikiApi';
@@ -18,25 +18,26 @@ const WikiEditPage = () => {
   const [saveArticle, { isLoading: isSaving }] = useSaveArticleMutation();
   const { name, role } = useAppSelector((s) => s.auth);
 
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [categoryId, setCategoryId] = useState('');
+  // Derive defaults from query data; user edits are tracked separately.
+  // This avoids useEffect(setState) which triggers cascading re-renders.
+  const articleDefaults = useMemo(
+    () => ({
+      title: (!isNew && existingArticle) ? existingArticle.title : '',
+      content: (!isNew && existingArticle) ? existingArticle.content : '',
+      categoryId: (!isNew && existingArticle) ? existingArticle.categoryId
+        : (categories && categories.length > 0) ? categories[0].id : '',
+    }),
+    [isNew, existingArticle, categories],
+  );
 
-  // Sync state when existing article loads (edit mode)
-  useEffect(() => {
-    if (!isNew && existingArticle) {
-      setTitle(existingArticle.title);
-      setContent(existingArticle.content);
-      setCategoryId(existingArticle.categoryId);
-    }
-  }, [isNew, existingArticle]);
+  const [userTitle, setUserTitle] = useState<string | null>(null);
+  const [userContent, setUserContent] = useState<string | null>(null);
+  const [userCategoryId, setUserCategoryId] = useState<string | null>(null);
 
-  // Set default category for new articles
-  useEffect(() => {
-    if (isNew && categories && categories.length > 0 && !categoryId) {
-      setCategoryId(categories[0].id);
-    }
-  }, [isNew, categories, categoryId]);
+  // Effective values: user edit if present, otherwise derived default
+  const title = userTitle ?? articleDefaults.title;
+  const content = userContent ?? articleDefaults.content;
+  const categoryId = userCategoryId || articleDefaults.categoryId;
 
   if (!EDITOR_ROLES.has(role)) {
     return (
@@ -75,7 +76,7 @@ const WikiEditPage = () => {
 
         <div className="mb-3">
           <label className="mb-1 block text-xs font-medium text-[var(--color-text-muted)]">Category</label>
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
+          <select value={categoryId} onChange={(e) => setUserCategoryId(e.target.value)}
             className="w-full rounded-lg border border-[var(--color-border-subtle)] bg-white p-2.5 text-sm dark:bg-slate-900 dark:text-white">
             {(categories ?? []).map((c) => (
               <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
@@ -85,14 +86,14 @@ const WikiEditPage = () => {
 
         <div className="mb-3">
           <label className="mb-1 block text-xs font-medium text-[var(--color-text-muted)]">Title</label>
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
+          <input type="text" value={title} onChange={(e) => setUserTitle(e.target.value)}
             placeholder="Article title..." required
             className="w-full rounded-lg border border-[var(--color-border-subtle)] bg-white p-2.5 text-sm dark:bg-slate-900 dark:text-white" />
         </div>
 
         <div className="mb-4">
           <label className="mb-1 block text-xs font-medium text-[var(--color-text-muted)]">Content (Markdown)</label>
-          <RichTextEditor value={content} onChange={setContent} placeholder="Write the article using Markdown..." minRows={12} />
+          <RichTextEditor value={content} onChange={setUserContent} placeholder="Write the article using Markdown..." minRows={12} />
         </div>
 
         <button type="submit" disabled={!title.trim() || !content.trim() || isSaving}
