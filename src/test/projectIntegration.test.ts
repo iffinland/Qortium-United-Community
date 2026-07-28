@@ -69,8 +69,7 @@ interface SearchPage {
 
 function createMockSearchFn(pages: SearchPage[][]): QdnSearchFn {
   let callCount = 0;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  return async (params: Parameters<QdnSearchFn>[0]) => {
+  return async () => {
     const page = pages[callCount] ?? [];
     callCount++;
     return page.map((p) => ({

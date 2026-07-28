@@ -17,7 +17,7 @@ import {
   getOwnerName,
 } from '../../services/qortium/qortiumClient';
 import { publishJsonResource } from '../../services/qortium/qdnService';
-import type { Post, Poll, FundTransaction, Comment, PostWithComments, RoleRegistry } from '../../types';
+import type { Post, Poll, Comment, PostWithComments, RoleRegistry } from '../../types';
 import { fetchRoleRegistry, publishRoleRegistry } from '../../services/qortium/rolesService';
 import {
   fetchValidatedPosts,
@@ -35,11 +35,6 @@ import type { TargetOwnerInfo } from '../../services/qdn/operations/ownerTombsto
 
 // ---- QDN Identifiers ----
 const QDN_SERVICE = 'DOCUMENT';
-
-// ---- Fund address ----
-const FUND_ADDRESS =
-  import.meta.env.VITE_FUND_ADDRESS ||
-  'QWifxJWGbJZ6Yo6kiimFkBGcm4AxQefdUm';
 
 // ---- Helpers ----
 
@@ -91,7 +86,7 @@ function toCommentView(env: { envelope: { data: Record<string, unknown>; metadat
 export const qortiumApi = createApi({
   reducerPath: 'qortiumApi',
   baseQuery: fakeBaseQuery<string>(),
-  tagTypes: ['Posts', 'Polls', 'FundBalance', 'FundTransactions', 'Comments', 'SinglePost', 'RoleRegistry'],
+  tagTypes: ['Posts', 'Polls', 'Comments', 'SinglePost', 'RoleRegistry'],
   endpoints: (builder) => ({
 
     // ===== POSTS (migrated — validated runtime + tombstones + media resolution) =====
@@ -170,47 +165,6 @@ export const qortiumApi = createApi({
         return items;
       }),
       providesTags: ['Polls'],
-    }),
-
-    // ===== FUND BALANCE (unchanged) =====
-    getFundBalance: builder.query<number, void>({
-      queryFn: () => queryFn(async () => {
-        const raw = await requestQortium<unknown>({ action: 'GET_BALANCE', address: FUND_ADDRESS });
-        if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-        if (typeof raw === 'string') { const p = Number(raw); if (Number.isFinite(p)) return p; }
-        if (raw && typeof raw === 'object') {
-          for (const key of ['balance', 'value', 'amount', 'confirmedBalance']) {
-            const val = (raw as Record<string, unknown>)[key];
-            if (typeof val === 'number' && Number.isFinite(val)) return val;
-            if (typeof val === 'string') { const p = Number(val); if (Number.isFinite(p)) return p; }
-          }
-        }
-        throw new Error('Could not parse balance.');
-      }),
-      providesTags: ['FundBalance'],
-    }),
-
-    // ===== FUND TRANSACTIONS (unchanged) =====
-    getFundTransactions: builder.query<FundTransaction[], void>({
-      queryFn: () => queryFn(async () => {
-        const raw = await requestQortium<unknown>({
-          action: 'FETCH_NODE_API',
-          path: `/transactions/search?address=${FUND_ADDRESS}&limit=20&reverse=true`,
-          method: 'GET',
-        });
-        const parsed = typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return raw; } })() : raw;
-        if (!Array.isArray(parsed)) throw new Error('No transactions found.');
-        return parsed.map((tx: Record<string, unknown>, i: number): FundTransaction => ({
-          id: (tx.signature as string) || (tx.txHash as string) || `tx-${i}`,
-          from: (tx.creatorAddress as string) || (tx.from as string) || '',
-          to: (tx.recipient as string) || (tx.to as string) || FUND_ADDRESS,
-          amount: typeof tx.amount === 'number' ? tx.amount : typeof tx.fee === 'number' ? tx.fee / 1e8 : 0,
-          description: (tx.description as string) || (tx.txType === 'PAYMENT' ? 'Payment' : 'Transaction'),
-          timestamp: (tx.timestamp as string) || (tx.created as string) || new Date().toISOString(),
-          txHash: (tx.signature as string) || (tx.txHash as string) || `tx-${i}`,
-        }));
-      }),
-      providesTags: ['FundTransactions'],
     }),
 
     // ===== SINGLE POST (migrated — validated runtime) =====
@@ -427,8 +381,6 @@ export const qortiumApi = createApi({
 export const {
   useGetPostsQuery,
   useGetPollsQuery,
-  useGetFundBalanceQuery,
-  useGetFundTransactionsQuery,
   useGetPostQuery,
   useGetCommentsQuery,
   useAddCommentMutation,

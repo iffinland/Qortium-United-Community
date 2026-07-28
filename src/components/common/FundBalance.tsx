@@ -1,14 +1,14 @@
 // ===== Fund Balance Display =====
 
 import { Coins } from 'lucide-react';
-import { useGetFundBalanceQuery } from '../../store/api/qortiumApi';
+import { useGetFundBalanceQuery } from '../../store/api/fundApi';
 
 interface FundBalanceProps {
   className?: string;
 }
 
 const FundBalance = ({ className = '' }: FundBalanceProps) => {
-  const { data: balance, isLoading } = useGetFundBalanceQuery();
+  const { data: balanceResult, isLoading } = useGetFundBalanceQuery();
 
   return (
     <div className={`hidden items-center gap-2 rounded-lg px-2.5 py-1.5 transition hover:bg-white/5 sm:flex ${className}`}>
@@ -18,7 +18,7 @@ const FundBalance = ({ className = '' }: FundBalanceProps) => {
           Fund
         </p>
         <p className="text-sm font-bold text-white tabular-nums">
-          {isLoading ? '...' : `${(balance ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })} QORT`}
+          {isLoading ? '...' : `${(balanceResult?.balance ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })} QORT`}
         </p>
       </div>
     </div>

@@ -3,8 +3,8 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector, type TypedUseSelectorHook } from 'react-redux';
 import authReducer from './slices/authSlice';
-import fundReducer from './slices/fundSlice';
 import { qortiumApi } from './api/qortiumApi';
+import { fundApi } from './api/fundApi';
 import { forumApi } from './api/forumApi';
 import { supportApi } from './api/supportApi';
 import { wikiApi } from './api/wikiApi';
@@ -14,8 +14,8 @@ import { projectApi } from './api/projectApi';
 export const store = configureStore({
   reducer: {
     auth: authReducer,
-    fund: fundReducer,
     [qortiumApi.reducerPath]: qortiumApi.reducer,
+    [fundApi.reducerPath]: fundApi.reducer,
     [forumApi.reducerPath]: forumApi.reducer,
     [supportApi.reducerPath]: supportApi.reducer,
     [wikiApi.reducerPath]: wikiApi.reducer,
@@ -30,6 +30,7 @@ export const store = configureStore({
       wikiApi.middleware,
       pollApi.middleware,
       projectApi.middleware,
+      fundApi.middleware,
     ),
   devTools: import.meta.env.DEV,
 });

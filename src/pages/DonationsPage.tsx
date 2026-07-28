@@ -1,256 +1,159 @@
-// ===== Donations / Fund Page =====
+// ===== Fund Page – Core-Authoritative Wallet Activity =====
+//
+// Displays the configured community fund wallet, its Core-reported balance,
+// and Core-reported wallet activity with truthful direction classification.
+// Funding goal display is deferred to a canonical campaign model (Option A).
 
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import {
   ArrowUpRight,
   ArrowDownLeft,
   ExternalLink,
   Coins,
   Clock,
-  Send,
-  CheckCircle2,
-  Target,
   Download,
+  Copy,
+  Check,
+  AlertTriangle,
 } from 'lucide-react';
-import {
-  useGetFundBalanceQuery,
-  useGetFundTransactionsQuery,
-} from '../store/api/qortiumApi';
-import { useAppSelector } from '../store';
+import { useGetFundOverviewQuery } from '../store/api/fundApi';
+import { fundConfig } from '../config/fundConfig';
+import { buildFundTransactionsCsv } from '../services/fund/fundRuntime';
+import type { FundTransaction, FundCompleteness } from '../services/fund/fundRuntime';
 
-const FUND_ADDRESS = 'QWifxJWGbJZ6Yo6kiimFkBGcm4AxQefdUm';
-const FUND_GOAL = 25000;
+const DIRECTION_CONFIG = {
+  incoming: { label: 'Incoming transfer', icon: ArrowDownLeft, color: 'text-emerald-600', iconBg: 'text-emerald-400', prefix: '+' },
+  outgoing: { label: 'Outgoing transfer', icon: ArrowUpRight, color: 'text-rose-600', iconBg: 'text-rose-400', prefix: '-' },
+  self: { label: 'Self-transfer', icon: ArrowUpRight, color: 'text-slate-500', iconBg: 'text-slate-400', prefix: '±' },
+  unknown: { label: 'Wallet transaction', icon: ExternalLink, color: 'text-slate-500', iconBg: 'text-slate-400', prefix: '' },
+} as const;
 
-const GoalTracker = ({ balance }: { balance: number }) => {
-  const pct = Math.min(Math.round((balance / FUND_GOAL) * 100), 100);
-  return (
-    <div className="rounded-xl bg-[var(--color-surface-card)] p-5 shadow-sm">
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
-        <Target className="h-4 w-4 text-rose-500" />
-        Funding Goal
-      </h3>
-      <div className="mb-2 flex items-end justify-between">
-        <span className="text-2xl font-bold tabular-nums text-[var(--color-text-primary)]">
-          {pct}%
-        </span>
-        <span className="text-xs text-[var(--color-text-muted)]">
-          {balance.toLocaleString('en-US')} / {FUND_GOAL.toLocaleString('en-US')} QORT
-        </span>
-      </div>
-      <div className="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-rose-400 to-rose-600 transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-        {FUND_GOAL - balance > 0
-          ? `${(FUND_GOAL - balance).toLocaleString('en-US')} QORT remaining to reach the goal`
-          : 'Goal reached! 🎉'}
-      </p>
-    </div>
-  );
+const COMPLETENESS_LABELS: Record<FundCompleteness, string> = {
+  complete: '',
+  incomplete: 'Transaction history may be incomplete.',
+  empty: 'No wallet activity found.',
+  unavailable: 'Transaction data is currently unavailable.',
 };
 
 const DonationsPage = () => {
-  const { data: balance, isLoading: balanceLoading, error: balanceError } =
-    useGetFundBalanceQuery();
-  const { data: transactions = [], isLoading: txsLoading, error: txsError } =
-    useGetFundTransactionsQuery();
-  const { isAuthenticated, name } = useAppSelector((s) => s.auth);
+  const { data, isLoading, error } = useGetFundOverviewQuery();
+  const [copied, setCopied] = useState(false);
 
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [donationFeedback, setDonationFeedback] = useState<{
-    type: 'success' | 'error';
-    msg: string;
-  } | null>(null);
+  const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  const formatDate = (ts: number) => new Date(ts).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  const isLoading = balanceLoading || txsLoading;
-  const error = balanceError || txsError;
-
-  const formatAddress = (addr: string) =>
-    `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-
-  const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('en-US', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const handleCopy = async () => {
+    if (!data?.walletAddress) return;
+    await navigator.clipboard.writeText(data.walletAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleExportCSV = () => {
-    const header = 'ID,From,To,Amount,Description,Date,TxHash';
-    const rows = transactions.map(
-      (tx) =>
-        `${tx.id},${tx.from},${tx.to},${tx.amount},${tx.description.replace(/,/g, ' ')},${tx.timestamp},${tx.txHash}`
-    );
-    const csv = [header, ...rows].join('\n');
+    if (!data) return;
+    const csv = buildFundTransactionsCsv(data.transactions, data.transactionCompleteness);
+    if (!csv) return;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `quc-donations-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `quc-fund-activity-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  // ---- Render: Loading ----
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse rounded-xl bg-slate-200 h-32" />
+        <div className="animate-pulse rounded-xl bg-slate-200 h-64" />
+      </div>
+    );
+  }
+
+  // ---- Render: Config error ----
+  if (fundConfig.status !== 'valid') {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+        <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-red-400" />
+        <p className="text-red-700">Fund wallet configuration is invalid.</p>
+      </div>
+    );
+  }
+
+  // ---- Render: Error ----
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+        <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-red-400" />
+        <p className="text-red-700">{typeof error === 'string' ? error : 'Failed to load fund data.'}</p>
+      </div>
+    );
+  }
+
+  const fundData = data!;
+  const balance = fundData.balance;
+  const transactions = fundData.transactions;
+  const txCompleteness = fundData.transactionCompleteness;
+  const viewState = fundData.viewState;
+
   return (
     <div className="space-y-6">
-      {/* Page title */}
+      {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">
-          Donation Fund
-        </h1>
-        <p className="text-sm text-[var(--color-text-muted)]">
-          Track fund activity and support community projects
-        </p>
+        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Community Fund</h1>
+        <p className="text-sm text-[var(--color-text-muted)]">Public fund wallet and activity</p>
       </div>
 
       {/* Balance card */}
       <div className="rounded-xl bg-gradient-to-br from-cyan-600 to-blue-700 p-6 text-white shadow-lg">
         <div className="mb-1 flex items-center gap-2">
           <Coins className="h-5 w-5 text-amber-300" />
-          <p className="text-sm font-medium uppercase tracking-wider text-cyan-100">
-            Fund Balance
-          </p>
+          <p className="text-sm font-medium uppercase tracking-wider text-cyan-100">Fund Wallet Balance</p>
         </div>
         <p className="text-3xl font-bold tabular-nums">
-          {isLoading ? (
-            <span className="animate-pulse">...</span>
-          ) : (
-            `${(balance ?? 0).toLocaleString('en-US', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })} QORT`
-          )}
+          {balance.status === 'available'
+            ? `${balance.balance!.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${balance.asset}`
+            : <span className="text-cyan-200 text-xl">Unavailable</span>}
         </p>
-        <p className="mt-1 text-sm text-cyan-100">
-          For supporting community projects and initiatives
+        <p className="mt-1 text-xs text-cyan-100/80">
+          {balance.status === 'available' && balance.balance === 0
+            ? 'Wallet balance is zero.'
+            : balance.status === 'unavailable'
+            ? 'Balance data is currently unavailable.'
+            : 'Current wallet balance reported by Core.'}
         </p>
       </div>
 
-      {/* Goal Tracker */}
-      <GoalTracker balance={balance ?? 0} />
-
-      {/* Error state */}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
-          {typeof error === 'string' ? error : 'Failed to load fund data.'}
+      {/* Wallet address + copy */}
+      <div className="rounded-xl bg-[var(--color-surface-card)] p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-[var(--color-text-muted)] mb-0.5">Fund Wallet Address</p>
+            <code className="text-sm font-mono text-[var(--color-text-primary)] break-all">{fundData.walletAddress}</code>
+          </div>
+          <button
+            onClick={handleCopy}
+            className="shrink-0 rounded-lg border border-slate-200 p-2 text-[var(--color-text-muted)] transition hover:border-cyan-300 hover:text-cyan-600"
+          >
+            {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+          </button>
         </div>
-      )}
+        <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+          Send {fundConfig.assetSymbol} to this address using your wallet.
+        </p>
+      </div>
 
-      {/* Donation Form */}
-      {isAuthenticated && (
-        <form
-          onSubmit={async (e: FormEvent) => {
-            e.preventDefault();
-            const amt = parseFloat(amount);
-            if (!amt || amt <= 0 || isSending) return;
-            setIsSending(true);
-            setDonationFeedback(null);
-
-            try {
-              // In production: use qdnRequest bridge to send QORT
-              // await requestQortium({ action: 'SEND_COIN', ... });
-              await new Promise((r) => setTimeout(r, 1500)); // simulate
-
-              setDonationFeedback({
-                type: 'success',
-                msg: `Successfully donated ${amt.toLocaleString('en-US')} QORT!`,
-              });
-              setAmount('');
-              setDescription('');
-            } catch {
-              setDonationFeedback({
-                type: 'error',
-                msg: 'Donation failed. Please try again.',
-              });
-            } finally {
-              setIsSending(false);
-            }
-          }}
-          className="rounded-xl bg-[var(--color-surface-card)] p-5 shadow-sm"
-        >
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
-            <Send className="h-4 w-4 text-cyan-500" />
-            Make a Donation
-          </h3>
-
-          {donationFeedback && (
-            <div
-              className={`mb-3 rounded-lg p-3 text-sm ${
-                donationFeedback.type === 'success'
-                  ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-400'
-                  : 'border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400'
-              }`}
-            >
-              {donationFeedback.type === 'success' && (
-                <CheckCircle2 className="mr-1 inline h-4 w-4" />
-              )}
-              {donationFeedback.msg}
-            </div>
-          )}
-
-          <div className="mb-3 flex gap-3">
-            <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium text-[var(--color-text-muted)]">
-                Amount (QORT)
-              </label>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                required
-                className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
-            </div>
-            <div className="flex-[2]">
-              <label className="mb-1 block text-xs font-medium text-[var(--color-text-muted)]">
-                Description (optional)
-              </label>
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What is this donation for?"
-                className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-[var(--color-text-muted)]">
-              Donating as{' '}
-              <span className="font-medium text-[var(--color-text-secondary)]">
-                {name || 'Unknown'}
-              </span>
-              {' · '}
-              Fund: <code className="text-[10px]">{FUND_ADDRESS.slice(0, 8)}...</code>
-            </p>
-            <button
-              type="submit"
-              disabled={
-                isSending || !amount || parseFloat(amount) <= 0
-              }
-              className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSending ? 'Sending...' : 'Donate'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {!isAuthenticated && (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-5 text-center dark:border-slate-700 dark:bg-slate-800/50">
-          <p className="text-sm text-[var(--color-text-muted)]">
-            Sign in to make a donation.
+      {/* Target info (config only, no progress bar) */}
+      {fundConfig.informationalTarget && (
+        <div className="rounded-xl bg-[var(--color-surface-card)] p-4 shadow-sm">
+          <p className="text-xs text-[var(--color-text-muted)]">
+            <span className="font-medium">Informational fund target:</span>{' '}
+            {fundConfig.informationalTarget.toLocaleString('en-US')} {fundConfig.assetSymbol}
+          </p>
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+            This is a configured target, not derived from wallet balance.
           </p>
         </div>
       )}
@@ -260,63 +163,74 @@ const DonationsPage = () => {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold text-[var(--color-text-primary)]">
             <Clock className="h-4 w-4 text-[var(--color-text-muted)]" />
-            Transaction History
+            Wallet Activity
           </h2>
-          {transactions.length > 0 && (
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-muted)] transition hover:border-cyan-300 hover:text-cyan-600 dark:hover:border-cyan-800"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export CSV
+          {viewState.csvAvailable && (
+            <button onClick={handleExportCSV} className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-muted)] transition hover:border-cyan-300 hover:text-cyan-600">
+              <Download className="h-3.5 w-3.5" /> Export CSV
             </button>
           )}
         </div>
 
+        {/* Completeness banner */}
+        {txCompleteness === 'incomplete' && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+            <AlertTriangle className="mr-1.5 inline h-4 w-4" />
+            {COMPLETENESS_LABELS.incomplete}
+          </div>
+        )}
+        {txCompleteness === 'unavailable' && (
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+            <AlertTriangle className="mr-1.5 inline h-4 w-4" />
+            {COMPLETENESS_LABELS.unavailable}
+          </div>
+        )}
+
         {transactions.length === 0 ? (
           <div className="rounded-xl bg-white p-8 text-center shadow-sm">
             <p className="text-[var(--color-text-muted)]">
-              No transactions yet.
+              {txCompleteness === 'empty' ? COMPLETENESS_LABELS.empty
+                : txCompleteness === 'unavailable' ? COMPLETENESS_LABELS.unavailable
+                : 'No wallet activity.'}
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {transactions.map((tx) => (
-              <div
-                key={tx.id}
-                className="rounded-xl bg-[var(--color-surface-card)] p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  {/* Left: Description + addresses */}
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-sm font-medium text-[var(--color-text-primary)]">
-                      {tx.description}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--color-text-muted)]">
-                      <span className="flex items-center gap-1">
-                        <ArrowUpRight className="h-3 w-3 text-rose-400" />
-                          From: {formatAddress(tx.from)}
+            {transactions.map((tx: FundTransaction) => {
+              const dc = DIRECTION_CONFIG[tx.direction];
+              return (
+                <div key={tx.signature} className="rounded-xl bg-[var(--color-surface-card)] p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 text-sm font-medium text-[var(--color-text-primary)]">
+                        {dc.label}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--color-text-muted)]">
+                        <span className="flex items-center gap-1">
+                          <ArrowUpRight className={`h-3 w-3 ${dc.iconBg}`} />
+                          From: {tx.senderAddress ? formatAddress(tx.senderAddress) : '—'}
                         </span>
                         <span className="flex items-center gap-1">
                           <ArrowDownLeft className="h-3 w-3 text-emerald-400" />
-                          To: {formatAddress(tx.to)}
-                      </span>
+                          To: {tx.recipientAddress ? formatAddress(tx.recipientAddress) : '—'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={`text-base font-bold tabular-nums ${dc.color}`}>
+                        {dc.prefix}{tx.amount.toLocaleString('en-US')} {fundConfig.assetSymbol}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)]">{formatDate(tx.timestamp)}</p>
                     </div>
                   </div>
-
-                  {/* Right: Amount + date */}
-                  <div className="shrink-0 text-right">
-                    <p className="text-base font-bold tabular-nums text-emerald-600">
-                      +{tx.amount.toLocaleString('et-EE')} QORT
+                  {tx.type && (
+                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                      Type: {tx.type} {tx.blockHeight ? `· Block: ${tx.blockHeight}` : ''}
                     </p>
-                    <div className="flex items-center justify-end gap-1 text-xs text-[var(--color-text-muted)]">
-                      <span>{formatDate(tx.timestamp)}</span>
-                      <ExternalLink className="h-3 w-3 cursor-pointer transition hover:text-cyan-500" />
-                    </div>
-                  </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
