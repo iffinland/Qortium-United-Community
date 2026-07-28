@@ -3,15 +3,12 @@
 // Based on patterns from Discussion-Boards and qortium-blog projects.
 // Communicates with Qortium Core through the qdnRequest bridge
 // injected by Qortium Home into Q-Apps.
-
-declare const qdnRequest: unknown;
+//
+// Bridge detection uses only globalThis/window/parent/top — no undeclared
+// identifier evaluation that could throw ReferenceError outside Qortium Home.
 
 const BRIDGE_WAIT_MS = 4000;
 const BRIDGE_POLL_MS = 200;
-
-interface QortiumRequestOptions {
-  timeoutMs?: number;
-}
 
 const isBridgeRequestFunction = (
   value: unknown
@@ -21,13 +18,7 @@ const isBridgeRequestFunction = (
 const getRequestBridge = (): ((
   payload: Record<string, unknown>
 ) => Promise<unknown>) | null => {
-  // Safe access: qdnRequest may not exist outside Qortium Home
-  try {
-    if (typeof qdnRequest !== 'undefined' && isBridgeRequestFunction(qdnRequest))
-      return qdnRequest;
-  } catch {
-    /* not defined */
-  }
+  // Only access qdnRequest via globalThis/window — never via an undeclared identifier
 
   try {
     const globalBridge = (
@@ -235,8 +226,7 @@ export const getOwnerName = async (): Promise<string> => {
  * Simplified pattern from qortium-blog: call bridge directly.
  */
 export const requestQortium = async <TResponse = unknown>(
-  payload: Record<string, unknown>,
-  _options?: QortiumRequestOptions
+  payload: Record<string, unknown>
 ): Promise<TResponse> => {
   const action = typeof payload.action === 'string' ? payload.action : 'UNKNOWN';
   const bridge = await waitForQortiumBridge();
