@@ -2,43 +2,124 @@
 @source './index.html';
 @source './src/**/*.{ts,tsx}';
 
-@custom-variant dark (&:where(.dark, .dark *));
+/*
+ * Single unified Qortium visual theme.
+ *
+ * The legacy utility colour names used throughout the app are intentionally
+ * mapped to semantic tokens below, so existing components adopt the unified
+ * palette without needing a per-component rewrite while new work can use the
+ * semantic variables directly.
+ */
+@theme inline {
+  --color-cyan-50: var(--color-accent-50);
+  --color-cyan-100: var(--color-accent-100);
+  --color-cyan-200: var(--color-accent-200);
+  --color-cyan-300: var(--color-accent-300);
+  --color-cyan-400: var(--color-accent-400);
+  --color-cyan-500: var(--color-accent-500);
+  --color-cyan-600: var(--color-accent-600);
+  --color-cyan-700: var(--color-accent-700);
+  --color-cyan-800: var(--color-accent-800);
+  --color-cyan-900: var(--color-accent-900);
+  --color-cyan-950: var(--color-accent-950);
+
+  --color-slate-50: var(--color-graphite-50);
+  --color-slate-100: var(--color-graphite-100);
+  --color-slate-200: var(--color-graphite-200);
+  --color-slate-300: var(--color-graphite-300);
+  --color-slate-400: var(--color-graphite-400);
+  --color-slate-500: var(--color-graphite-500);
+  --color-slate-600: var(--color-graphite-600);
+  --color-slate-700: var(--color-graphite-700);
+  --color-slate-800: var(--color-graphite-800);
+  --color-slate-900: var(--color-graphite-900);
+  --color-slate-950: var(--color-graphite-950);
+}
 
 @layer base {
   :root {
-    --color-brand: #06b6d4;
-    --color-brand-light: #22d3ee;
-    --color-brand-dark: #0891b2;
-    --color-surface-app: #f8fafc;
-    --color-surface-card: #ffffff;
-    --color-surface-sidebar: #f1f5f9;
-    --color-surface-banner: #0f172a;
-    --color-surface-banner-accent: #1e293b;
-    --color-text-primary: #0f172a;
-    --color-text-secondary: #475569;
-    --color-text-muted: #94a3b8;
-    --color-text-inverse: #f8fafc;
-    --color-accent-success: #10b981;
-    --color-accent-warning: #f59e0b;
-    --color-accent-danger: #ef4444;
-    --color-accent-info: #3b82f6;
-    --color-border-subtle: #e2e8f0;
-  }
+    color-scheme: dark;
 
-  .dark {
-    --color-brand: #22d3ee;
-    --color-brand-light: #67e8f9;
-    --color-brand-dark: #06b6d4;
-    --color-surface-app: #0f172a;
-    --color-surface-card: #1e293b;
-    --color-surface-sidebar: #1a2332;
-    --color-surface-banner: #020617;
-    --color-surface-banner-accent: #0f172a;
-    --color-text-primary: #f1f5f9;
-    --color-text-secondary: #94a3b8;
-    --color-text-muted: #64748b;
-    --color-text-inverse: #0f172a;
-    --color-border-subtle: #334155;
+    /*
+     * Core surfaces - deep, rich violet/plum surfaces. No pure black, no
+     * flat navy default theme.
+     */
+    --color-background: #0d0920;
+    --color-surface: #1b1233;
+    --color-surface-muted: #251944;
+    --color-surface-sidebar: #160f2a;
+    --color-surface-banner: #100b24;
+    --color-surface-banner-accent: #1b1238;
+
+    /* Text - high readability without being harsh. */
+    --color-text-primary: #f1ecfd;
+    --color-text-secondary: #c7badf;
+    --color-text-muted: #9b8fc0;
+    --color-text-inverse: #160f2a;
+
+    /* Borders and shadows. */
+    --color-border: #332750;
+    --color-border-strong: #4b3a74;
+    --color-shadow: 0 14px 34px rgba(8, 4, 24, 0.5);
+
+    /* Accent - violet / purple family. */
+    --color-accent: #8b5cf6;
+    --color-accent-hover: #9f70ff;
+    --color-accent-soft: #2b1f54;
+    --color-accent-contrast: #ffffff;
+
+    /* Status colours - kept for semantic success / warning / error / info. */
+    --color-danger: #f06d86;
+    --color-success: #3ecf8e;
+    --color-warning: #f5b867;
+    --color-info: #79a2f8;
+
+    /* Footer drawer. */
+    --color-footer-drawer: var(--color-surface-sidebar);
+    --color-footer-handle: #2c2154;
+    --color-footer-handle-text: #f1ecfd;
+
+    /*
+     * Accent shade scale used by legacy cyan utilities. Low values are dark
+     * tinted surfaces, mid/high values are light enough for text and borders
+     * on dark surfaces. Solid accent buttons use --color-accent directly.
+     */
+    --color-accent-50: #251a45;
+    --color-accent-100: #2e2157;
+    --color-accent-200: #3b2969;
+    --color-accent-300: #8b5cf6;
+    --color-accent-400: #9f70ff;
+    --color-accent-500: #b28dff;
+    --color-accent-600: #c4a6ff;
+    --color-accent-700: #d6c2ff;
+    --color-accent-800: #3b2969;
+    --color-accent-900: #251a45;
+    --color-accent-950: #191134;
+
+    /* Violet-tinted neutral scale used by legacy slate utilities. */
+    --color-graphite-50: #f3f0f8;
+    --color-graphite-100: #e8e3f0;
+    --color-graphite-200: #d2c9dd;
+    --color-graphite-300: #b5a9c8;
+    --color-graphite-400: #9588ab;
+    --color-graphite-500: #75688d;
+    --color-graphite-600: #5d5274;
+    --color-graphite-700: #453c5a;
+    --color-graphite-800: #2e2740;
+    --color-graphite-900: #1d1830;
+    --color-graphite-950: #120e1f;
+
+    /* Backwards-compatible aliases used by existing components. */
+    --color-surface-app: var(--color-background);
+    --color-surface-card: var(--color-surface);
+    --color-border-subtle: var(--color-border);
+    --color-brand: var(--color-accent);
+    --color-brand-light: var(--color-accent-soft);
+    --color-brand-dark: var(--color-accent-hover);
+    --color-accent-success: var(--color-success);
+    --color-accent-warning: var(--color-warning);
+    --color-accent-danger: var(--color-danger);
+    --color-accent-info: var(--color-info);
   }
 
   body {
@@ -46,26 +127,46 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: var(--color-surface-app);
     color: var(--color-text-primary);
+    background-color: var(--color-background);
+    background-image:
+      radial-gradient(1100px 560px at 12% -8%, rgba(123, 77, 214, 0.38), transparent 62%),
+      radial-gradient(900px 520px at 88% -4%, rgba(74, 110, 240, 0.28), transparent 58%),
+      radial-gradient(1000px 620px at 50% 112%, rgba(210, 64, 150, 0.24), transparent 62%),
+      linear-gradient(180deg, #170f35 0%, #100a28 42%, #0b071c 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
 
-  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  ::-webkit-scrollbar-thumb { background: #4a3e6a; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #6b5c8e; }
 
-  .dark ::-webkit-scrollbar-thumb { background: #475569; }
-  .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-
-  /* Focus visible for keyboard navigation */
   :focus-visible {
-    outline: 2px solid #06b6d4;
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
     border-radius: 4px;
   }
 
-  /* Smooth page transitions */
+  input,
+  textarea,
+  select {
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+  }
+
+  select option {
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
+  }
+
+  ::placeholder {
+    color: var(--color-text-muted);
+    opacity: 1;
+  }
+
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
@@ -73,5 +174,126 @@
 
   main > * {
     animation: fadeIn 0.25s ease-out;
+  }
+}
+
+@layer components {
+  .quc-footer-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin: 0.5rem auto 0;
+    padding: 0.45rem 1rem 0.6rem;
+    border: 1px solid var(--color-border-strong);
+    border-bottom: none;
+    border-radius: 999px 999px 0 0;
+    background: var(--color-footer-handle);
+    color: var(--color-footer-handle-text);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .quc-footer-handle:hover {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-accent-contrast);
+  }
+
+  .quc-footer-panel {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      max-height 0.35s ease,
+      opacity 0.25s ease,
+      visibility 0.35s ease;
+  }
+
+  .quc-footer-panel.is-open {
+    max-height: 600px;
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .rich-content {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+
+  .rich-content h2 {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .rich-content h3 {
+    margin: 1rem 0 0.4rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .rich-content blockquote {
+    margin: 0.75rem 0;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-surface-muted);
+    color: var(--color-text-muted);
+  }
+
+  .rich-content code {
+    border-radius: 0.25rem;
+    background: var(--color-surface-muted);
+    padding: 0.1rem 0.35rem;
+    font-size: 0.85em;
+    color: #f6a9c3;
+  }
+
+  .rich-content a {
+    color: var(--color-accent-400);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .rich-content a:hover {
+    color: var(--color-accent-600);
+  }
+
+  .rich-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+    margin: 0.75rem 0;
+    border: 1px solid var(--color-border);
+  }
+
+  .rich-image-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 3rem;
+    border-radius: 0.75rem;
+    border: 1px dashed var(--color-border-strong);
+    background: var(--color-surface-muted);
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    margin: 0.75rem 0;
+    padding: 0.75rem;
+  }
+
+  .rich-content.legacy-markdown p {
+    margin-bottom: 0.75rem;
   }
 }

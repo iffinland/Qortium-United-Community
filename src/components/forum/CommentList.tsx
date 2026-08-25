@@ -4,20 +4,26 @@ import { useState } from 'react';
 import type { Comment } from '../../types';
 import { MessageCircle, Reply } from 'lucide-react';
 import CommentForm from './CommentForm';
+import { RichTextContent } from '../editor/RichTextContent';
 
 interface CommentListProps {
   comments: Comment[];
   postId?: string;
 }
 
-const formatDate = (dateStr: string) =>
-  new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return 'Unknown';
+  const parsed = new Date(dateStr);
+  return Number.isNaN(parsed.getTime())
+    ? 'Unknown'
+    : parsed.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+};
 
 const CommentItem = ({
   comment,
@@ -33,9 +39,9 @@ const CommentItem = ({
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg border border-[var(--color-border-subtle)] bg-white p-4 shadow-sm dark:bg-slate-900">
+      <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 shadow-sm">
         <div className="mb-2 flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-[11px] font-bold text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-[var(--color-accent)] text-[11px] font-bold text-white">
             {comment.authorName
               .split(' ')
               .map((p) => p[0]?.toUpperCase() ?? '')
@@ -54,9 +60,9 @@ const CommentItem = ({
             In reply to a comment
           </p>
         )}
-        <p className="pl-9 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-          {comment.content}
-        </p>
+        <div className="pl-9 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+          <RichTextContent value={comment.content} />
+        </div>
         <div className="mt-2 pl-9">
           <button
             onClick={() => setShowReply(!showReply)}
@@ -102,8 +108,8 @@ const CommentList = ({ comments, postId = '' }: CommentListProps) => {
 
   if (comments.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-[var(--color-border-subtle)] bg-slate-50/50 p-6 text-center dark:bg-slate-800/30">
-        <MessageCircle className="mx-auto mb-2 h-8 w-8 text-slate-300 dark:text-slate-600" />
+      <div className="rounded-lg border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-surface-muted)]/30 p-6 text-center">
+        <MessageCircle className="mx-auto mb-2 h-8 w-8 text-slate-400" />
         <p className="text-sm text-[var(--color-text-muted)]">
           No comments yet. Be the first to comment!
         </p>

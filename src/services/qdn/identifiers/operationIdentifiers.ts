@@ -8,6 +8,7 @@
 import {
   buildReactionActorKey, buildReactionTargetKey,
   buildTombstoneOwnerKey, buildTombstoneTargetKey,
+  buildTicketCloseActorKey, buildTicketCloseTargetKey,
   OPERATION_KEY_HEX_LENGTH,
 } from './operationKeys';
 
@@ -15,6 +16,7 @@ import {
 
 export const REACTION_IDENTIFIER_PREFIX = 'qucp-r-';
 export const OWNER_TOMBSTONE_IDENTIFIER_PREFIX = 'qucp-ot-';
+export const SUPPORT_TICKET_CLOSE_IDENTIFIER_PREFIX = 'qucp-stc-';
 
 // ---- Reaction ----
 
@@ -52,4 +54,27 @@ const TOMBSTONE_RE = new RegExp(
 export function parseOwnerTombstoneIdentifier(id: string): { targetKey: string; ownerKey: string } | null {
   const m = id.match(TOMBSTONE_RE);
   return m ? { targetKey: m[1], ownerKey: m[2] } : null;
+}
+
+// ---- Support Ticket Close ----
+
+export async function buildSupportTicketCloseIdentifier(
+  targetFamily: string,
+  targetEntityId: string,
+  actorAddress: string,
+): Promise<string> {
+  const tk = await buildTicketCloseTargetKey(targetFamily, targetEntityId);
+  const ak = await buildTicketCloseActorKey(actorAddress);
+  return `${SUPPORT_TICKET_CLOSE_IDENTIFIER_PREFIX}${tk}-${ak}`;
+}
+
+const SUPPORT_TICKET_CLOSE_RE = new RegExp(
+  `^qucp-stc-([a-f0-9]{${OPERATION_KEY_HEX_LENGTH}})-([a-f0-9]{${OPERATION_KEY_HEX_LENGTH}})$`,
+);
+
+export function parseSupportTicketCloseIdentifier(
+  id: string,
+): { targetKey: string; actorKey: string } | null {
+  const m = id.match(SUPPORT_TICKET_CLOSE_RE);
+  return m ? { targetKey: m[1], actorKey: m[2] } : null;
 }

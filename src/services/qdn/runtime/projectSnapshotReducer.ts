@@ -1,22 +1,24 @@
-// ===== Project Immutable Snapshot Reduction =====
+// ===== Project Current-Snapshot Reduction =====
 //
-// Processes accepted project snapshots for one entity:
-//   1. Select canonical owner (first accepted wallet by trusted QDN timestamp)
-//   2. Reject cross-wallet snapshots
-//   3. Apply approved lifecycle transitions (archived is terminal)
-//   4. Reject immutable field changes
-//   5. Reject forbidden lifecycle transitions (planned→completed, backward, etc.)
-//   6. Latest valid snapshot is canonical; history preserved for audit
+// QDN overwrites a coordinate in place: after a terminal update, only the
+// terminal payload remains discoverable at that service/name/identifier.
+// There is no retained version history to reduce. The authoritative model
+// therefore treats the current discoverable snapshot as independently valid,
+// and the canonical owner is the publisher of that snapshot.
+//
+// Lifecycle transition ordering is enforced by the write path and cannot be
+// reconstructed from a single overwritten coordinate; we deliberately do not
+// model history that QDN does not expose.
 
 import type { QdnResourceEnvelope } from '../QdnResourceEnvelope';
 import type { QucpProject, ProjectStatus } from '../schemas/projectSchema';
-import { PROJECT_IMMUTABLE_FIELDS, isApprovedLifecycleTransition } from '../schemas/projectSchema';
-import { warningDiag, type QdnDiagnostic } from '../diagnostics';
+import { selectLatestVersion } from '../ordering/authoritativeEntityOrdering';
+import type { QdnDiagnostic } from '../diagnostics';
 
 // ---- Result Types ----
 
 export interface ReducedProject {
-  /** Latest valid canonical project snapshot. */
+  /** The current canonical project snapshot (latest discoverable payload). */
   snapshot: QdnResourceEnvelope<QucpProject>;
   /** Current project status. */
   status: ProjectStatus;
@@ -34,125 +36,38 @@ export interface ProjectReductionResult {
   rejectedCount: number;
 }
 
-// ---- Helpers ----
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
-function immutableFieldsChanged(
-  original: QucpProject,
-  update: QucpProject,
-): string[] {
-  const changed: string[] = [];
-  for (const field of PROJECT_IMMUTABLE_FIELDS) {
-    if (!deepEqual((original as Record<string, unknown>)[field], (update as Record<string, unknown>)[field])) {
-      changed.push(field);
-    }
-  }
-  return changed;
-}
-
 // ---- Reducer ----
 
 export function reduceProjectSnapshots(
   entityId: string,
   acceptedSnapshots: QdnResourceEnvelope<QucpProject>[],
 ): ProjectReductionResult {
-  const diagnostics: QdnDiagnostic[] = [];
-  let rejectedCount = 0;
-
   if (acceptedSnapshots.length === 0) {
-    return { project: null, diagnostics, rejectedCount };
+    return { project: null, diagnostics: [], rejectedCount: 0 };
   }
 
-  // Sort by QDN metadata (earliest first for canonical owner selection)
-  const sorted = [...acceptedSnapshots].sort((a, b) =>
-    (a.metadata.created ?? 0) - (b.metadata.created ?? 0),
-  );
+  // QDN exposes the current resource for a coordinate, not a retained
+  // sequence. Select the latest accepted payload deterministically and accept
+  // it on its own, including terminal (completed/archived) statuses.
+  const canonical =
+    selectLatestVersion(acceptedSnapshots) ?? acceptedSnapshots[0];
 
-  // Canonical owner = wallet of the first (earliest) accepted publisher
-  const canonicalWallet = sorted[0].resolvedPublisherAddress ??
-    (sorted[0].data as Record<string, unknown>).ownerAddress as string;
-  const canonicalName = sorted[0].metadata.name;
-
-  // Filter to canonical owner only; reject cross-wallet
-  const ownerSnapshots = sorted.filter((s) => {
-    const wallet = s.resolvedPublisherAddress ?? (s.data as Record<string, unknown>).ownerAddress as string;
-    if (wallet !== canonicalWallet) {
-      rejectedCount++;
-      diagnostics.push(warningDiag('project-cross-wallet-update',
-        `Cross-wallet project snapshot from ${s.metadata.name} rejected for project ${entityId}`,
-        { identifier: s.metadata.identifier }));
-      return false;
-    }
-    return true;
-  });
-
-  if (ownerSnapshots.length === 0) {
-    return { project: null, diagnostics, rejectedCount };
-  }
-
-  // Track latest valid snapshot, applying lifecycle transitions
-  let currentSnapshot = ownerSnapshots[0];
-  let currentStatus = currentSnapshot.data.status;
-
-  // Valid initial statuses: planned, active
-  const VALID_INITIAL: ProjectStatus[] = ['planned', 'active'];
-  if (!VALID_INITIAL.includes(currentStatus)) {
-    diagnostics.push(warningDiag('project-invalid-initial-status',
-      `Initial project status must be planned or active, got ${currentStatus} for ${entityId}`,
-      { identifier: currentSnapshot.metadata.identifier }));
-    return { project: null, diagnostics, rejectedCount };
-  }
-
-  for (let i = 1; i < ownerSnapshots.length; i++) {
-    const next = ownerSnapshots[i];
-    const nextStatus = next.data.status as ProjectStatus;
-
-    // Check immutable fields
-    const changedImmutable = immutableFieldsChanged(currentSnapshot.data, next.data);
-    if (changedImmutable.length > 0) {
-      rejectedCount++;
-      diagnostics.push(warningDiag('project-immutable-fields-changed',
-        `Immutable fields changed for project ${entityId}: ${changedImmutable.join(', ')}`,
-        { identifier: next.metadata.identifier }));
-      continue;
-    }
-
-    // Check lifecycle: use approved transition matrix
-    if (!isApprovedLifecycleTransition(currentStatus, nextStatus)) {
-      rejectedCount++;
-      diagnostics.push(warningDiag('project-invalid-status-transition',
-        `Invalid lifecycle transition ${currentStatus}→${nextStatus} for project ${entityId}`,
-        { identifier: next.metadata.identifier }));
-      continue;
-    }
-
-    // Archived is terminal: reject any snapshot after archived
-    if (currentStatus === 'archived') {
-      rejectedCount++;
-      diagnostics.push(warningDiag('project-invalid-status-transition',
-        `Archived project ${entityId} is terminal; cannot accept further snapshots`,
-        { identifier: next.metadata.identifier }));
-      continue;
-    }
-
-    // Accept this snapshot
-    currentSnapshot = next;
-    currentStatus = nextStatus;
-  }
+  const canonicalOwnerWallet =
+    canonical.resolvedPublisherAddress ??
+    ((canonical.data as Record<string, unknown>).ownerAddress as string | undefined) ??
+    '';
+  const canonicalOwnerName = canonical.metadata.name;
 
   return {
     project: {
-      snapshot: currentSnapshot,
-      status: currentStatus,
-      canonicalOwnerWallet: canonicalWallet,
-      canonicalOwnerName: canonicalName,
+      snapshot: canonical,
+      status: canonical.data.status,
+      canonicalOwnerWallet,
+      canonicalOwnerName,
       entityId,
     },
-    diagnostics: sortProjectDiagnostics(diagnostics),
-    rejectedCount,
+    diagnostics: [],
+    rejectedCount: 0,
   };
 }
 

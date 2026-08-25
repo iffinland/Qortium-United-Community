@@ -16,6 +16,12 @@ import {
 import type { QueryCompleteness } from '../../services/qdn/runtime/runtimeTypes';
 import { warningDiag, type QdnDiagnostic } from '../../services/qdn/diagnostics';
 import type { ForumCategory, ForumThread, ThreadReply, ThreadWithReplies } from '../../types/forum';
+import {
+  buildActiveForumDiscussions,
+  type ActiveForumDiscussion,
+  type ForumDiscussionReplyInput,
+  type ForumDiscussionThreadInput,
+} from '../../services/dashboard/forumActivity';
 
 // ---- Categories — current fixed Forum configuration ----
 
@@ -48,6 +54,16 @@ export interface ForumThreadResult {
   diagnostics: readonly QdnDiagnostic[];
 }
 
+export interface ActiveForumDiscussionView extends ActiveForumDiscussion {
+  categoryName: string;
+}
+
+export interface ActiveForumDiscussionsResult {
+  items: ActiveForumDiscussionView[];
+  completeness: QueryCompleteness;
+  diagnostics: readonly QdnDiagnostic[];
+}
+
 // ---- Helpers ----
 
 const queryFn = async <T>(fn: () => Promise<T>): Promise<{ data: T } | { error: string }> => {
@@ -55,7 +71,7 @@ const queryFn = async <T>(fn: () => Promise<T>): Promise<{ data: T } | { error: 
 };
 
 /** Convert a validated QDN forum topic envelope to the UI ForumThread type. */
-function toForumThreadView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number; updated?: number } }; entityId: string; publisherName: string; publisherAddress: string }): ForumThread {
+export function toForumThreadView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number; updated?: number } }; entityId: string; publisherName: string; publisherAddress: string }): ForumThread {
   const d = env.envelope.data;
   const meta = env.envelope.metadata;
   return {
@@ -65,14 +81,14 @@ function toForumThreadView(env: { envelope: { data: Record<string, unknown>; met
     categoryId: (d.categoryId as string) ?? '',
     authorName: env.publisherName,
     authorAddress: env.publisherAddress,
-    createdAt: meta.created ? new Date(meta.created).toISOString() : new Date().toISOString(),
-    updatedAt: meta.updated ? new Date(meta.updated).toISOString() : undefined,
+    createdAt: meta.created ? new Date(meta.created).toISOString() : null,
+    updatedAt: meta.updated ? new Date(meta.updated).toISOString() : null,
     tags: Array.isArray(d.tags) ? d.tags as string[] : [],
   };
 }
 
 /** Convert a validated QDN forum reply envelope to the UI ThreadReply type. */
-function toForumReplyView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number } }; entityId: string; publisherName: string; publisherAddress: string }): ThreadReply {
+export function toForumReplyView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number } }; entityId: string; publisherName: string; publisherAddress: string }): ThreadReply {
   const d = env.envelope.data;
   return {
     id: env.entityId,
@@ -82,8 +98,33 @@ function toForumReplyView(env: { envelope: { data: Record<string, unknown>; meta
     content: (d.content as string) ?? '',
     createdAt: env.envelope.metadata.created
       ? new Date(env.envelope.metadata.created).toISOString()
-      : new Date().toISOString(),
+      : null,
     parentReplyId: (d.parentReplyId as string | null) ?? null,
+  };
+}
+
+function toForumDiscussionThreadInput(env: {
+  envelope: { data: Record<string, unknown>; metadata: { created?: number } };
+  entityId: string;
+}): ForumDiscussionThreadInput {
+  const d = env.envelope.data;
+  return {
+    id: env.entityId,
+    categoryId: typeof d.categoryId === 'string' ? d.categoryId : '',
+    title: typeof d.title === 'string' ? d.title : '',
+    createdAtMs: env.envelope.metadata.created ?? null,
+  };
+}
+
+function toForumDiscussionReplyInput(env: {
+  envelope: { data: Record<string, unknown>; metadata: { created?: number } };
+  entityId: string;
+}): ForumDiscussionReplyInput {
+  const d = env.envelope.data;
+  return {
+    id: env.entityId,
+    threadId: typeof d.parentEntityId === 'string' ? d.parentEntityId : '',
+    createdAtMs: env.envelope.metadata.created ?? null,
   };
 }
 
@@ -125,7 +166,35 @@ export const forumApi = createApi({
   tagTypes: ['ForumCategories', 'ForumThreads', 'ForumReplies'],
   endpoints: (builder) => ({
     // ===== CATEGORIES (unchanged — current fixed configuration) =====
-    getCategories: builder.query<ForumCategory[], void>({ queryFn: () => ({ data: CATEGORIES }), providesTags: ['ForumCategories'] }),
+    getCategories: builder.query<ForumCategory[], void>({
+      queryFn: () => queryFn(async () => {
+        const result = await fetchValidatedForumTopics();
+        const threadCounts = new Map<string, number>();
+        const lastActivity = new Map<string, number>();
+
+        if (result.status !== 'unavailable') {
+          for (const topic of result.items) {
+            const categoryId = topic.envelope.data.categoryId;
+            if (!categoryId) continue;
+            threadCounts.set(categoryId, (threadCounts.get(categoryId) ?? 0) + 1);
+            const activity = topic.envelope.metadata.updated ?? topic.envelope.metadata.created ?? 0;
+            if (activity > (lastActivity.get(categoryId) ?? 0)) {
+              lastActivity.set(categoryId, activity);
+            }
+          }
+        }
+
+        return CATEGORIES.map((category) => {
+          const activity = lastActivity.get(category.id);
+          return {
+            ...category,
+            threadCount: threadCounts.get(category.id) ?? 0,
+            lastActivityAt: activity ? new Date(activity).toISOString() : '',
+          };
+        });
+      }),
+      providesTags: ['ForumCategories'],
+    }),
 
     // ===== GET THREADS (completeness-exposing, diagnostics-preserving) =====
     getThreads: builder.query<ForumTopicListResult, string>({
@@ -141,6 +210,67 @@ export const forumApi = createApi({
         return { topics, completeness: result.status, diagnostics: result.diagnostics ?? [] };
       }),
       providesTags: (_r, _e, catId) => [{ type: 'ForumThreads', id: catId }],
+    }),
+
+    // ===== GET ACTIVE DISCUSSIONS (dashboard-only derived view) =====
+    getActiveDiscussions: builder.query<ActiveForumDiscussionsResult, void>({
+      queryFn: () => queryFn(async () => {
+        const [topicResult, replyResult] = await Promise.all([
+          fetchValidatedForumTopics(),
+          fetchValidatedForumReplies(),
+        ]);
+
+        if (topicResult.status === 'unavailable') {
+          throw new Error(topicResult.reason ?? 'Forum topics unavailable.');
+        }
+
+        const threads = topicResult.status === 'empty'
+          ? []
+          : topicResult.items.map(toForumDiscussionThreadInput);
+        const replies = replyResult.status === 'empty' || replyResult.status === 'unavailable'
+          ? []
+          : replyResult.items.map(toForumDiscussionReplyInput);
+
+        const diagnostics: QdnDiagnostic[] = [
+          ...(topicResult.diagnostics ?? []),
+          ...(replyResult.diagnostics ?? []),
+        ];
+
+        if (replyResult.status === 'unavailable') {
+          diagnostics.push(warningDiag(
+            'forum-replies-unavailable',
+            'Forum replies are currently unavailable. Reply counts may be incomplete.',
+          ));
+        }
+
+        let completeness: QueryCompleteness;
+        if (topicResult.status === 'empty') {
+          completeness = 'empty';
+        } else if (
+          topicResult.status === 'incomplete' ||
+          replyResult.status === 'incomplete' ||
+          replyResult.status === 'unavailable'
+        ) {
+          completeness = 'incomplete';
+        } else {
+          completeness = 'complete';
+        }
+
+        const categoryNames = new Map(CATEGORIES.map((category) => [
+          category.id,
+          category.name,
+        ]));
+        const items = buildActiveForumDiscussions(threads, replies).map(
+          (discussion) => ({
+            ...discussion,
+            categoryName:
+              categoryNames.get(discussion.categoryId) ?? discussion.categoryId,
+          }),
+        );
+
+        return { items, completeness, diagnostics };
+      }),
+      providesTags: ['ForumThreads', 'ForumReplies'],
     }),
 
     // ===== GET THREAD (completeness-exposing, strict parent-link reduction, diagnostics-preserving) =====
@@ -240,9 +370,16 @@ export const forumApi = createApi({
           return { error: err instanceof Error ? err.message : 'Failed to publish thread.' };
         }
       },
-      invalidatesTags: (_r, _e, { categoryId }) => [{ type: 'ForumThreads', id: categoryId }],
+      invalidatesTags: (_r, _e, { categoryId }) => [{ type: 'ForumThreads', id: categoryId }, 'ForumCategories'],
     }),
   }),
 });
 
-export const { useGetCategoriesQuery, useGetThreadsQuery, useGetThreadQuery, useAddReplyMutation, useCreateThreadMutation } = forumApi;
+export const {
+  useGetCategoriesQuery,
+  useGetThreadsQuery,
+  useGetThreadQuery,
+  useGetActiveDiscussionsQuery,
+  useAddReplyMutation,
+  useCreateThreadMutation,
+} = forumApi;

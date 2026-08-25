@@ -15,6 +15,8 @@ export { postPolicy } from './postPolicy';
 export { wikiArticlePolicy } from './wikiArticlePolicy';
 export { forumTopicPolicy } from './forumTopicPolicy';
 export { supportTicketPolicy } from './supportTicketPolicy';
+export { supportTicketStatusPolicy } from './supportTicketStatusPolicy';
+export { eventPolicy } from './eventPolicy';
 
 // Concrete policies — child entities
 export { postCommentPolicy } from './postCommentPolicy';

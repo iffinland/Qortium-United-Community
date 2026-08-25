@@ -137,7 +137,12 @@ export function applyCategoryHistoricalAuthorization(
   const diagnostics = [...(categoryResult.diagnostics ?? [])];
 
   for (const item of categoryResult.items) {
-    const categoryQdnCreatedTime = item.envelope.metadata.created;
+    // The trusted effective mutation/publication time is QDN `updated` when
+    // present. A QDN coordinate overwrite keeps `created` but advances
+    // `updated`, so trusting only `created` would let a revoked Admin keep
+    // updating an old resource indefinitely.
+    const categoryQdnCreatedTime =
+      item.envelope.metadata.updated ?? item.envelope.metadata.created;
     const publisherWallet = item.publisherAddress;
 
     const authResult = verifyCategoryHistoricalAuthorization({
@@ -224,6 +229,10 @@ export async function querySupportCategories(
     service: params?.service ?? 'DOCUMENT',
     identifierPrefix: params?.identifierPrefix ?? SUPPORT_CATEGORY_SEARCH_PREFIX,
     pageSize: params?.pageSize, safetyMax: params?.safetyMax, signal: params?.signal,
+    // Support categories are Admin-managed shared state: a currently-authorized
+    // Admin may supersede another Admin's previously published category.
+    sharedAdminOwnership: true,
+    adminAuthority: params?.adminAuthority,
   });
 }
 

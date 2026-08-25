@@ -1,10 +1,20 @@
-// ===== Simple Markdown Renderer =====
+// ===== Markdown Renderer =====
 //
-// Converts basic Markdown to React elements.
+// Converts basic Markdown to safe React elements.
 // Supports: **bold**, *italic*, `code`, [links](url),
 // # headings, - lists, and paragraphs.
+// All content is rendered as React elements — no raw HTML insertion.
+// Link hrefs are sanitized against unsafe protocols.
 
 import { type ReactNode } from 'react';
+
+/** Unsafe URL protocols blocked from link rendering. */
+const BLOCKED_PROTOCOLS = /^(javascript|data|vbscript):/i;
+
+/** Returns true if the href uses a safe protocol. */
+function isSafeHref(href: string): boolean {
+  return !BLOCKED_PROTOCOLS.test(href.trim());
+}
 
 type InlineToken =
   | { type: 'text'; value: string }
@@ -134,22 +144,24 @@ const renderInlineToken = (token: InlineToken, key: number): ReactNode => {
       return (
         <code
           key={key}
-          className="rounded bg-slate-100 px-1 py-0.5 text-[0.85em] text-rose-600 dark:bg-slate-800 dark:text-rose-400"
+          className="rounded bg-[var(--color-surface-muted)] px-1 py-0.5 text-[0.85em] text-rose-400"
         >
           {token.value}
         </code>
       );
     case 'link':
-      return (
+      return isSafeHref(token.href) ? (
         <a
           key={key}
           href={token.href}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-cyan-600 underline hover:text-cyan-800"
+          className="text-cyan-600 underline hover:text-cyan-300"
         >
           {token.value}
         </a>
+      ) : (
+        <span key={key} className="text-slate-400 line-through">{token.value}</span>
       );
   }
 };

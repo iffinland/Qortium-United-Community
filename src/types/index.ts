@@ -1,12 +1,13 @@
 // ===== Qortium United Community – Core Types =====
 
-export type UserRole =
-  | 'SysOp'
-  | 'SuperAdmin'
-  | 'Admin'
-  | 'Moderator'
-  | 'Creator'
-  | 'Member';
+/**
+ * Production authorization roles.
+ *
+ * SysOp is the trust anchor and is never assignable through role data.
+ * Admin is the only assignable privileged role.
+ * User is the safe default / non-privileged state for everyone else.
+ */
+export type UserRole = 'SysOp' | 'Admin' | 'User';
 
 export interface UserAccount {
   address: string;
@@ -14,6 +15,16 @@ export interface UserAccount {
   names: string[];
   avatarUrl?: string | null;
   publicKey?: string;
+}
+
+/** Canonical QDN image reference used by rich content and derived thumbnails. */
+export interface QdnImageRef {
+  service: 'IMAGE';
+  name: string;
+  identifier: string;
+  filename?: string;
+  mimeType?: string;
+  size?: number;
 }
 
 export interface RoleRegistry {
@@ -47,16 +58,16 @@ export interface Post {
   content: string;
   authorName: string;
   authorAddress: string;
-  createdAt: string;
+  createdAt: string | null;
+  /** Authoritative QDN creation epoch, when available. Used for canonical updates. */
+  createdAtMs?: number | null;
   updatedAt?: string | null;
-  commentsCount: number;
-  likesCount: number;
   isPinned: boolean;
   tags?: string[];
-  /** Entity ID of a qucp-media-reference resource for the cover image. No arbitrary URLs. */
+  /** Resolved QDN image reference derived from content or a legacy media reference. */
+  coverImageRef?: QdnImageRef;
+  /** Legacy entity ID of a qucp-media-reference resource for the cover image. */
   coverMediaEntityId?: string;
-  /** Resolved QDN render URL from validated media reference. Only present after resolution. */
-  coverMediaUrl?: string;
   status?: 'active' | 'deleted';
 }
 
@@ -66,7 +77,7 @@ export interface Comment {
   authorName: string;
   authorAddress: string;
   content: string;
-  createdAt: string;
+  createdAt: string | null;
   parentCommentId?: string | null;
 }
 

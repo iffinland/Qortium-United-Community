@@ -19,28 +19,33 @@ export function createBridgeNameLookup(
   bridgeQdnFetch: QdnFetchFn,
 ): NameLookupFn {
   return async (name: string): Promise<string | null> => {
-    try {
-      const raw = await bridgeQdnFetch({
-        service: 'GET_NAME_DATA',
-        name,
-        identifier: name,
-      });
+    // Failures must propagate as failures. Returning null here would collapse
+    // a bridge/Core failure into an authoritative "unresolved" identity and
+    // then cache that false result for the unresolved TTL. Identity lookups
+    // must only be "unresolved" when the name genuinely has no owner mapping.
+    const raw = await bridgeQdnFetch({
+      service: 'GET_NAME_DATA',
+      name,
+      identifier: name,
+    });
 
-      if (!raw || typeof raw !== 'object') return null;
+    if (raw === null || raw === undefined) return null;
 
-      const data = raw as Record<string, unknown>;
-
-      // Name data from Core has 'owner' (wallet address) or 'ownerAddress'
-      const owner =
-        typeof data.owner === 'string' ? data.owner
-        : typeof data.ownerAddress === 'string' ? data.ownerAddress
-        : typeof data.registeredOwner === 'string' ? data.registeredOwner
-        : null;
-
-      return owner;
-    } catch {
-      return null;
+    if (typeof raw !== 'object') {
+      throw new Error(
+        `Invalid GET_NAME_DATA response for "${name}": expected object, got ${typeof raw}`,
+      );
     }
+
+    const data = raw as Record<string, unknown>;
+
+    // Name data from Core has 'owner' (wallet address) or 'ownerAddress'
+    return (
+      typeof data.owner === 'string' ? data.owner
+      : typeof data.ownerAddress === 'string' ? data.ownerAddress
+      : typeof data.registeredOwner === 'string' ? data.registeredOwner
+      : null
+    );
   };
 }
 

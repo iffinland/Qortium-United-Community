@@ -1,43 +1,59 @@
 // ===== Wiki Article Detail Page =====
 
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Clock, Edit3, BookOpen } from 'lucide-react';
-import { useGetArticleQuery, useGetCategoriesQuery, useGetArticlesQuery } from '../store/api/wikiApi';
-import { useAppSelector } from '../store';
-import { parseMarkdown } from '../services/forum/markdown';
-
-const EDITOR_ROLES = new Set(['SysOp', 'SuperAdmin', 'Admin', 'Creator']);
+import { ArrowLeft, Clock, BookOpen, Archive, WifiOff } from 'lucide-react';
+import { useGetWikiArticleQuery, useGetCategoriesQuery, useGetWikiListQuery } from '../store/api/wikiApi';
+import { RichTextContent } from '../components/editor/RichTextContent';
 
 const WikiArticlePage = () => {
-  const { slug } = useParams<{ slug: string }>();
-  const { data: article, isLoading } = useGetArticleQuery(slug || '');
+  const { entityId } = useParams<{ entityId: string }>();
+  const { data: detail, isLoading } = useGetWikiArticleQuery(entityId || '');
   const { data: categories } = useGetCategoriesQuery();
-  const { data: allArticles } = useGetArticlesQuery();
-  const { role } = useAppSelector((s) => s.auth);
-  const canEdit = EDITOR_ROLES.has(role);
+  const { data: wikiList } = useGetWikiListQuery();
 
   if (isLoading) {
     return (
       <div className="space-y-4">
         <div className="animate-pulse rounded-xl bg-[var(--color-surface-card)] p-6">
-          <div className="mb-3 h-6 w-1/2 rounded bg-slate-200" />
-          <div className="space-y-2"><div className="h-4 w-full rounded bg-slate-100" /><div className="h-4 w-3/4 rounded bg-slate-100" /></div>
+          <div className="mb-3 h-6 w-1/2 rounded bg-[var(--color-surface-muted)]" />
+          <div className="space-y-2"><div className="h-4 w-full rounded bg-[var(--color-surface-muted)]" /><div className="h-4 w-3/4 rounded bg-[var(--color-surface-muted)]" /></div>
         </div>
       </div>
     );
   }
 
-  if (!article) {
+  if (!detail || detail.status === 'unavailable') {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-800 dark:bg-red-950">
-        <p className="text-red-700 dark:text-red-400">Article not found.</p>
+      <div className="rounded-xl border border-amber-800 bg-amber-950 p-6 text-center">
+        <WifiOff className="mx-auto mb-2 h-6 w-6 text-amber-400" />
+        <p className="text-amber-400">Article data is currently unavailable.</p>
         <Link to="/wiki" className="mt-2 inline-block text-sm text-cyan-600">Back to Wiki</Link>
       </div>
     );
   }
 
+  if (detail.status === 'not-found') {
+    return (
+      <div className="rounded-xl border border-red-800 bg-red-950 p-6 text-center">
+        <p className="text-red-400">Article not found.</p>
+        <Link to="/wiki" className="mt-2 inline-block text-sm text-cyan-600">Back to Wiki</Link>
+      </div>
+    );
+  }
+
+  if (detail.status === 'malformed') {
+    return (
+      <div className="rounded-xl border border-red-800 bg-red-950 p-6 text-center">
+        <p className="text-red-400">Article data is malformed and cannot be displayed.</p>
+        <Link to="/wiki" className="mt-2 inline-block text-sm text-cyan-600">Back to Wiki</Link>
+      </div>
+    );
+  }
+
+  const article = detail.article!;
   const cat = categories?.find((c) => c.id === article.categoryId);
-  const catArticles = (allArticles ?? []).filter((a) => a.categoryId === article.categoryId);
+  const allArticles = wikiList?.status !== 'unavailable' ? (wikiList?.articles ?? []) : [];
+  const catArticles = allArticles.filter((a) => a.categoryId === article.categoryId);
 
   return (
     <div className="flex gap-8">
@@ -56,12 +72,12 @@ const WikiArticlePage = () => {
               <nav className="space-y-0.5">
                 {catArticles.map((a) => (
                   <Link
-                    key={a.id}
-                    to={`/wiki/${a.slug}`}
+                    key={a.entityId}
+                    to={`/wiki/article/${a.entityId}`}
                     className={`block rounded-md px-2.5 py-1.5 text-sm transition ${
-                      a.slug === slug
-                        ? 'bg-cyan-50 font-medium text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400'
-                        : 'text-[var(--color-text-muted)] hover:bg-slate-50 dark:hover:bg-slate-800'
+                      a.entityId === entityId
+                        ? 'bg-cyan-950 font-medium text-cyan-400'
+                        : 'text-[var(--color-text-muted)] hover:bg-slate-800'
                     }`}
                   >
                     {a.title}
@@ -82,22 +98,27 @@ const WikiArticlePage = () => {
           {cat && <span className="text-xs text-[var(--color-text-muted)]">/ {cat.name}</span>}
         </div>
 
+        {detail.status === 'archived' && (
+          <div className="rounded-lg border border-amber-800 bg-amber-950 px-4 py-2 text-sm text-amber-400">
+            <Archive className="mr-1.5 inline h-4 w-4" />
+            This article has been archived and is no longer maintained.
+          </div>
+        )}
+
         <article className="rounded-xl bg-[var(--color-surface-card)] p-6 shadow-sm">
           <h1 className="mb-3 text-2xl font-bold text-[var(--color-text-primary)]">
             {article.title}
           </h1>
           <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-muted)]">
-            <span className="font-medium text-[var(--color-text-secondary)]">{article.authorName}</span>
-            <span className="flex items-center gap-1"><Clock className="h-3 w-3" />Updated {new Date(article.updatedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-            {canEdit && (
-              <Link to={`/wiki/${article.slug}/edit`} className="ml-auto flex items-center gap-1 rounded-lg border border-[var(--color-border-subtle)] px-2.5 py-1 text-cyan-600 transition hover:border-cyan-300 dark:text-cyan-400">
-                <Edit3 className="h-3 w-3" /> Edit
-              </Link>
-            )}
+            <span className="font-medium text-[var(--color-text-secondary)]">{article.publisherName}</span>
+            <span className="flex items-center gap-1"><Clock className="h-3 w-3" />
+              {article.updatedAt
+                ? `Updated ${new Date(article.updatedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                : 'Update date unavailable'}
+            </span>
+            <span className="text-[var(--color-text-muted)]">v{article.revision}</span>
           </div>
-          <div className="prose prose-slate max-w-none dark:prose-invert">
-            {parseMarkdown(article.content)}
-          </div>
+          <RichTextContent value={article.content} />
         </article>
       </div>
     </div>

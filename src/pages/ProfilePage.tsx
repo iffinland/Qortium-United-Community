@@ -24,9 +24,9 @@ const ProfilePage = () => {
     return (
       <div className="space-y-4">
         <div className="animate-pulse rounded-xl bg-[var(--color-surface-card)] p-6 shadow-sm">
-          <div className="mb-4 h-16 w-16 rounded-full bg-slate-200" />
-          <div className="mb-3 h-6 w-40 rounded bg-slate-200" />
-          <div className="h-4 w-60 rounded bg-slate-100" />
+          <div className="mb-4 h-16 w-16 rounded-full bg-[var(--color-surface-muted)]" />
+          <div className="mb-3 h-6 w-40 rounded bg-[var(--color-surface-muted)]" />
+          <div className="h-4 w-60 rounded bg-[var(--color-surface-muted)]" />
         </div>
       </div>
     );
@@ -60,7 +60,7 @@ const ProfilePage = () => {
       <div className="rounded-xl bg-[var(--color-surface-card)] p-6 shadow-sm">
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
           {/* Avatar */}
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-xl font-bold text-white shadow-md">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-[var(--color-accent)] text-xl font-bold text-white shadow-md">
             {initials}
           </div>
 
@@ -74,14 +74,14 @@ const ProfilePage = () => {
 
             {/* Address */}
             <div className="mb-3 flex items-center gap-2">
-              <code className="rounded bg-slate-100 px-2 py-0.5 text-xs text-[var(--color-text-secondary)] dark:bg-slate-800">
+              <code className="rounded bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs text-[var(--color-text-secondary)]">
                 {address
                   ? `${address.slice(0, 8)}...${address.slice(-6)}`
                   : 'No address'}
               </code>
               <button
                 onClick={() => address && handleCopy(address)}
-                className="rounded-md p-1 text-[var(--color-text-muted)] transition hover:bg-slate-100 hover:text-[var(--color-text-primary)] dark:hover:bg-slate-800"
+                className="rounded-md p-1 text-[var(--color-text-muted)] transition hover:bg-slate-800 hover:text-[var(--color-text-primary)]"
                 title="Copy address"
               >
                 {copied ? (
@@ -95,11 +95,11 @@ const ProfilePage = () => {
             {/* Stats */}
             <div className="flex flex-wrap gap-4">
               {balance !== null && (
-                <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 dark:bg-emerald-950/50">
+                <div className="flex items-center gap-1.5 rounded-lg bg-emerald-950/50 px-3 py-1.5">
                   <span className="text-xs text-[var(--color-text-muted)]">
                     Balance
                   </span>
-                  <span className="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  <span className="text-sm font-bold tabular-nums text-emerald-400">
                     {balance.toLocaleString('en-US', {
                       minimumFractionDigits: 2,
                     })}{' '}
@@ -123,7 +123,7 @@ const ProfilePage = () => {
             {names.map((n) => (
               <span
                 key={n}
-                className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-700 dark:border-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-400"
+                className="rounded-full border border-cyan-800 bg-cyan-950/50 px-3 py-1 text-xs font-medium text-cyan-400"
               >
                 {n}
               </span>
@@ -151,7 +151,7 @@ const ProfilePage = () => {
           </div>
           <div className="flex justify-between">
             <span className="text-[var(--color-text-muted)]">Bridge</span>
-            <span className="text-xs text-emerald-600">
+            <span className="text-xs text-emerald-400">
               {address ? 'Connected' : 'Dev Mode'}
             </span>
           </div>

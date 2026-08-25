@@ -4,6 +4,8 @@
 // Provides domain-specific query helpers for posts, comments, and wiki.
 
 import { requestQortium } from '../../qortium/qortiumClient';
+import { findFirstQdnImageRef } from '../../rich-text/richText';
+import type { QdnImageRef } from '../../../types';
 import type { QdnSearchFn } from '../paginatedQdnSearch';
 import type { QdnFetchFn } from '../fetchQdnResources';
 import {
@@ -22,9 +24,23 @@ import {
 } from './commentRuntime';
 import {
   queryWikiArticles,
-  buildWikiPayload,
+  buildWikiCreatePayload,
+  buildWikiUpdatePayload,
+  generateWikiEntityId,
+  wikiSlug,
+  fetchValidatedWikiArticleByEntityId as fetchWikiArticleById,
   type WikiQueryResult,
+  type WikiArticleLookupResult,
 } from './wikiRuntime';
+import {
+  queryEvents,
+  buildEventCreatePayload,
+  buildEventUpdatePayload,
+  generateEventEntityId,
+  fetchValidatedEventByEntityId as fetchEventById,
+  type EventQueryResult,
+  type EventLookupResult,
+} from './eventRuntime';
 import {
   resolveMediaReference,
   toResolvedMediaView,
@@ -56,6 +72,26 @@ import {
   type TicketReplyQueryResult,
   type SupportCategoryQueryResult,
 } from './supportRuntime';
+import {
+  querySupportTicketStatuses,
+  buildSupportTicketClosePayload,
+  buildSupportRoleContext,
+  reduceSupportTicketStatuses,
+  reduceSupportTicketCloseBoundary,
+  evaluateTicketReplyAgainstClose,
+  authorizeSupportTicketCloseActor,
+  type SupportTicketStatusQueryResult,
+  type SupportRoleContext,
+  type EffectiveSupportTicketStatus,
+  type SupportTicketTargetOwner,
+  type SupportTicketCloseBoundary,
+  type TicketReplyCloseDecision,
+} from './supportTicketStatusRuntime';
+import {
+  buildAdminRoleHistoryContext,
+  createAdminAuthorityProvider,
+} from '../roles/adminHistoricalAuthorization';
+import type { AdminAuthorityProvider } from './runtimeTypes';
 
 // ---- Bridge Search Function ----
 
@@ -85,10 +121,20 @@ const fetchFn: QdnFetchFn = async (params) => {
   });
 };
 
+// Identity resolution uses the dedicated GET_NAME_DATA bridge action. The
+// generic fetchFn above must not be reused here because it would incorrectly
+// issue FETCH_QDN_RESOURCE for a name lookup.
+const nameLookupFetchFn: QdnFetchFn = async (params) => {
+  return requestQortium<unknown>({
+    action: 'GET_NAME_DATA',
+    name: params.name,
+  });
+};
+
 // ---- Identity Resolver Initialization ----
 
 try {
-  getIdentityResolver(fetchFn);
+  getIdentityResolver(nameLookupFetchFn);
 } catch {
   // Already initialized or bridge not available
 }
@@ -96,7 +142,11 @@ try {
 // ---- Domain Query Functions ----
 
 export async function fetchValidatedPosts(): Promise<PostQueryResult> {
-  return queryPosts(searchFn, fetchFn, getIdentityResolver());
+  const adminAuthority = await buildAdminAuthority();
+  return queryPosts(searchFn, fetchFn, getIdentityResolver(), {
+    adminAuthority,
+    sharedAdminOwnership: true,
+  });
 }
 
 export async function fetchValidatedComments(): Promise<CommentQueryResult> {
@@ -104,7 +154,29 @@ export async function fetchValidatedComments(): Promise<CommentQueryResult> {
 }
 
 export async function fetchValidatedWiki(): Promise<WikiQueryResult> {
-  return queryWikiArticles(searchFn, fetchFn, getIdentityResolver());
+  const adminAuthority = await buildAdminAuthority();
+  return queryWikiArticles(searchFn, fetchFn, getIdentityResolver(), {
+    adminAuthority,
+    sharedAdminOwnership: true,
+  });
+}
+
+export async function fetchValidatedWikiArticleByEntityId(entityId: string): Promise<WikiArticleLookupResult> {
+  const adminAuthority = await buildAdminAuthority();
+  return fetchWikiArticleById(searchFn, fetchFn, getIdentityResolver(), entityId, adminAuthority);
+}
+
+export async function fetchValidatedEvents(): Promise<EventQueryResult> {
+  const adminAuthority = await buildAdminAuthority();
+  return queryEvents(searchFn, fetchFn, getIdentityResolver(), {
+    adminAuthority,
+    sharedAdminOwnership: true,
+  });
+}
+
+export async function fetchValidatedEventByEntityId(entityId: string): Promise<EventLookupResult> {
+  const adminAuthority = await buildAdminAuthority();
+  return fetchEventById(searchFn, fetchFn, getIdentityResolver(), entityId, adminAuthority);
 }
 
 export async function fetchMediaReference(
@@ -112,6 +184,43 @@ export async function fetchMediaReference(
   signal?: AbortSignal,
 ): Promise<MediaReferenceResolution> {
   return resolveMediaReference(mediaEntityId, searchFn, fetchFn, getIdentityResolver(), signal);
+}
+
+/**
+ * Resolve the display image for a content body.
+ *
+ * New rich content stores an inline [imageqdn] marker directly in the body.
+ * Older resources may still use a legacy qucp-media-reference entity ID; that
+ * path is retained only for read compatibility and is not used by new writes.
+ */
+export async function fetchContentImageRef(
+  content: string,
+  legacyMediaEntityId?: string,
+): Promise<QdnImageRef | null> {
+  const inline = findFirstQdnImageRef(content);
+  if (inline) return inline;
+
+  if (
+    legacyMediaEntityId &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(legacyMediaEntityId)
+  ) {
+    const resolution = await resolveMediaReference(
+      legacyMediaEntityId,
+      searchFn,
+      fetchFn,
+      getIdentityResolver(),
+    );
+    const view = toResolvedMediaView(resolution, false);
+    if (view.status === 'resolved' && view.service === 'IMAGE') {
+      return {
+        service: 'IMAGE',
+        name: view.publisherName,
+        identifier: view.identifier,
+      };
+    }
+  }
+
+  return null;
 }
 
 // ---- Tombstone Functions ----
@@ -149,6 +258,10 @@ export async function fetchValidatedSupportCategories(): Promise<SupportCategory
   return querySupportCategories(searchFn, fetchFn, getIdentityResolver());
 }
 
+export async function fetchValidatedSupportTicketStatuses(): Promise<SupportTicketStatusQueryResult> {
+  return querySupportTicketStatuses(searchFn, fetchFn, getIdentityResolver());
+}
+
 // ---- Poll & Vote Queries ----
 
 import {
@@ -170,7 +283,11 @@ import {
 } from './projectRuntime';
 
 export async function fetchValidatedPolls(): Promise<PollQueryResult> {
-  return queryPolls(searchFn, fetchFn, getIdentityResolver());
+  const adminAuthority = await buildAdminAuthority();
+  return queryPolls(searchFn, fetchFn, getIdentityResolver(), {
+    adminAuthority,
+    sharedAdminOwnership: true,
+  });
 }
 
 export async function fetchValidatedVotes(): Promise<VoteQueryResult> {
@@ -181,7 +298,22 @@ export { reducePollResults, reduceVoteResultsWithPollContext, derivePollResults,
 export type { ReducedPollListResult, DerivedPollResults };
 
 export async function fetchValidatedProjects(): Promise<ProjectQueryResult> {
-  return queryProjects(searchFn, fetchFn, getIdentityResolver());
+  const adminAuthority = await buildAdminAuthority();
+  return queryProjects(searchFn, fetchFn, getIdentityResolver(), {
+    adminAuthority,
+    sharedAdminOwnership: true,
+  });
+}
+
+/**
+ * Build the fail-closed Admin/SysOp authority provider from canonical role
+ * snapshot lineage. Reads must not succeed on admin-managed content unless
+ * this provider confirms authority at the resource's trusted mutation time.
+ */
+async function buildAdminAuthority(): Promise<AdminAuthorityProvider> {
+  const roleResult = await fetchValidatedRoleSnapshots();
+  const context = buildAdminRoleHistoryContext(roleResult);
+  return createAdminAuthorityProvider(context);
 }
 
 export { reduceProjectResults, type ReducedProjectListResult } from './projectRuntime';
@@ -204,7 +336,29 @@ export function getCachedRoleSnapshot(): import('../schemas/roleRegistrySnapshot
 
 // ---- Publication Helpers ----
 
-export { buildPostPayload, buildCommentPayload, buildWikiPayload, buildTombstonePayload, buildForumTopicPayload, buildForumReplyPayload, buildSupportTicketPayload, buildTicketReplyPayload, buildSupportCategoryPayload };
+export {
+  buildPostPayload,
+  buildCommentPayload,
+  buildWikiCreatePayload,
+  buildWikiUpdatePayload,
+  generateWikiEntityId,
+  wikiSlug,
+  buildEventCreatePayload,
+  buildEventUpdatePayload,
+  generateEventEntityId,
+  buildTombstonePayload,
+  buildForumTopicPayload,
+  buildForumReplyPayload,
+  buildSupportTicketPayload,
+  buildTicketReplyPayload,
+  buildSupportCategoryPayload,
+  buildSupportTicketClosePayload,
+  buildSupportRoleContext,
+  reduceSupportTicketStatuses,
+  reduceSupportTicketCloseBoundary,
+  evaluateTicketReplyAgainstClose,
+  authorizeSupportTicketCloseActor,
+};
 export { toResolvedMediaView };
 
 // ---- Re-exports ----
@@ -213,11 +367,19 @@ export type {
   PostQueryResult,
   CommentQueryResult,
   WikiQueryResult,
+  EventQueryResult,
+  EventLookupResult,
   ForumTopicQueryResult,
   ForumReplyQueryResult,
   SupportTicketQueryResult,
   TicketReplyQueryResult,
   SupportCategoryQueryResult,
+  SupportTicketStatusQueryResult,
+  SupportRoleContext,
+  EffectiveSupportTicketStatus,
+  SupportTicketTargetOwner,
+  SupportTicketCloseBoundary,
+  TicketReplyCloseDecision,
   ProjectQueryResult,
   MediaReferenceResolution,
   TombstoneQueryResult,

@@ -5,15 +5,18 @@
 
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { publishJsonResource } from '../../services/qortium/qdnService';
+import { requestQortium } from '../../services/qortium/qortiumClient';
 import { buildQucpIdentifier } from '../../services/qdn/identifiers/qucpIdentifiers';
 import {
   fetchValidatedProjects,
+  fetchContentImageRef,
   reduceProjectResults,
 } from '../../services/qdn/runtime/qdnRuntimeService';
 import type { ReducedProjectListResult } from '../../services/qdn/runtime/projectRuntime';
 import type { QdnDiagnostic } from '../../services/qdn/diagnostics';
 import type { QucpProject, ProjectStatus } from '../../services/qdn/schemas/projectSchema';
 import { isApprovedLifecycleTransition } from '../../services/qdn/schemas/projectSchema';
+import type { QdnImageRef } from '../../types';
 
 // ---- View Model Types ----
 
@@ -24,8 +27,11 @@ export interface ProjectView {
   status: ProjectStatus;
   tags: string[];
   imageEntityId?: string;
+  imageRef?: QdnImageRef;
   website?: string;
   repository?: string;
+  category?: string;
+  qdnUrl?: string;
   donationAddress?: string;
   fundingGoal?: number;
   ownerName: string;
@@ -53,13 +59,14 @@ const queryFn = async <T>(fn: () => Promise<T>): Promise<{ data: T } | { error: 
   try { return { data: await fn() }; } catch (err) { return { error: err instanceof Error ? err.message : 'Failed.' }; }
 };
 
-function toProjectView(
+async function toProjectView(
   project: ReducedProjectListResult['projects'][0],
   currentWallet: string,
-): ProjectView {
+): Promise<ProjectView> {
   const snap = project.snapshot;
   const hasCreated = typeof snap.metadata.created === 'number';
   const hasEdited = typeof snap.data.editedAt === 'number';
+  const imageRef = (await fetchContentImageRef(snap.data.description, snap.data.imageEntityId)) ?? undefined;
   return {
     id: project.entityId,
     title: snap.data.title,
@@ -67,8 +74,11 @@ function toProjectView(
     status: project.status,
     tags: snap.data.tags ?? [],
     imageEntityId: snap.data.imageEntityId,
+    imageRef,
     website: snap.data.website,
     repository: snap.data.repository,
+    category: snap.data.category,
+    qdnUrl: snap.data.qdnUrl,
     donationAddress: snap.data.donationAddress,
     fundingGoal: snap.data.fundingGoal,
     ownerName: project.canonicalOwnerName,
@@ -95,6 +105,8 @@ export interface CreateProjectUserInput {
   imageEntityId?: string;
   website?: string;
   repository?: string;
+  category?: string;
+  qdnUrl?: string;
   donationAddress?: string;
   fundingGoal?: number;
 }
@@ -138,6 +150,8 @@ export function buildCreateProjectPayload(
     imageEntityId: input.imageEntityId,
     website: input.website,
     repository: input.repository,
+    category: input.category,
+    qdnUrl: input.qdnUrl,
     donationAddress: input.donationAddress,
     fundingGoal: input.fundingGoal,
     ownerName: auth.ownerName,
@@ -156,6 +170,8 @@ export interface UpdateProjectInput {
   imageEntityId?: string;
   website?: string;
   repository?: string;
+  category?: string;
+  qdnUrl?: string;
 }
 
 export interface UpdateProjectAuth {
@@ -180,11 +196,6 @@ export function buildUpdateProjectPayload(
   input: UpdateProjectInput,
   now: number = Date.now(),
 ): UpdateProjectResult {
-  // Owner authority check
-  if (auth.ownerAddress !== currentProject.ownerAddress) {
-    return { payload: null, identifier: '', error: 'Only the canonical owner may update this project.' };
-  }
-
   // Archived is terminal
   if (currentProject.status === 'archived') {
     return { payload: null, identifier: '', error: 'Archived projects cannot be updated.' };
@@ -208,10 +219,12 @@ export function buildUpdateProjectPayload(
     imageEntityId: input.imageEntityId,
     website: input.website,
     repository: input.repository,
+    category: input.category,
+    qdnUrl: input.qdnUrl,
     donationAddress: currentProject.donationAddress,
     fundingGoal: currentProject.fundingGoal,
-    ownerName: currentProject.ownerName,
-    ownerAddress: currentProject.ownerAddress,
+    ownerName: auth.ownerName,
+    ownerAddress: auth.ownerAddress,
     createdAt: currentProject.createdAt,
     editedAt: now,
   };
@@ -233,7 +246,10 @@ export const projectApi = createApi({
         const queryResult = await fetchValidatedProjects();
         const reduced = reduceProjectResults(queryResult);
 
-        const projects = reduced.projects.map((p) => toProjectView(p, currentWallet));
+        const projects: ProjectView[] = [];
+        for (const p of reduced.projects) {
+          projects.push(await toProjectView(p, currentWallet));
+        }
 
         return {
           projects,
@@ -253,7 +269,7 @@ export const projectApi = createApi({
         const found = reduced.projects.find((p) => p.entityId === entityId);
         if (!found) return null;
 
-        return toProjectView(found, currentWallet);
+        return await toProjectView(found, currentWallet);
       }),
       providesTags: (_result, _error, { entityId }) => [{ type: 'Projects', id: entityId }],
     }),
@@ -270,6 +286,8 @@ export const projectApi = createApi({
         imageEntityId?: string;
         website?: string;
         repository?: string;
+        category?: string;
+        qdnUrl?: string;
         donationAddress?: string;
         fundingGoal?: number;
         ownerName: string;
@@ -279,9 +297,15 @@ export const projectApi = createApi({
       queryFn: async (input) => {
         try {
           const { ownerName, ownerAddress, ...userInput } = input;
+          const imageEntityId = userInput.imageEntityId;
+
           const result = buildCreateProjectPayload(
             { ownerName, ownerAddress },
-            { ...userInput, status: userInput.status ?? 'planned' },
+            {
+              ...userInput,
+              status: userInput.status ?? 'planned',
+              imageEntityId,
+            },
           );
 
           if (result.error) return { error: result.error };
@@ -315,8 +339,15 @@ export const projectApi = createApi({
         imageEntityId?: string;
         website?: string;
         repository?: string;
+        category?: string;
+        qdnUrl?: string;
         ownerName: string;
         ownerAddress: string;
+        // Canonical current entity state used to enforce owner authority and
+        // approved lifecycle transitions against the real published project.
+        existingStatus: ProjectStatus;
+        existingOwnerName: string;
+        existingOwnerAddress: string;
         // Immutable: donationAddress, fundingGoal
         existingDonationAddress?: string;
         existingFundingGoal?: number;
@@ -325,15 +356,26 @@ export const projectApi = createApi({
     >({
       queryFn: async (input) => {
         try {
+          const rawAccount = await requestQortium<unknown>({
+            action: 'GET_SELECTED_ACCOUNT',
+          });
+          const account = rawAccount as Record<string, unknown>;
+          const selectedAddress = typeof account.address === 'string' ? account.address : '';
+          if (!selectedAddress || selectedAddress !== input.ownerAddress) {
+            return { error: 'You can only update projects from the currently selected account.' };
+          }
+
+          const imageEntityId = input.imageEntityId;
+
           const currentProject: QucpProject = {
             schemaVersion: 1,
             resourceFamily: 'qucp-project',
             entityId: input.entityId,
             title: '', // not needed for builder — it only preserves immutable fields
             description: '', // not needed for builder
-            status: input.status, // placeholder — builder uses input.status
-            ownerName: input.ownerName,
-            ownerAddress: input.ownerAddress,
+            status: input.existingStatus,
+            ownerName: input.existingOwnerName,
+            ownerAddress: input.existingOwnerAddress,
             createdAt: input.existingCreatedAt,
             donationAddress: input.existingDonationAddress,
             fundingGoal: input.existingFundingGoal,
@@ -347,9 +389,11 @@ export const projectApi = createApi({
               description: input.description,
               status: input.status,
               tags: input.tags,
-              imageEntityId: input.imageEntityId,
+              imageEntityId,
               website: input.website,
               repository: input.repository,
+              category: input.category,
+              qdnUrl: input.qdnUrl,
             },
           );
 

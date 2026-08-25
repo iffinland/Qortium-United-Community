@@ -2,28 +2,18 @@
 
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, MessageCircle, Heart, Pin, Clock, Share2, Check } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Pin, Clock, Share2, Check } from 'lucide-react';
 import { useGetPostQuery } from '../store/api/qortiumApi';
 import CommentList from '../components/forum/CommentList';
 import CommentForm from '../components/forum/CommentForm';
-import { parseMarkdown } from '../services/forum/markdown';
+import { RichTextContent } from '../components/editor/RichTextContent';
+import { QdnImage } from '../components/editor/QdnImage';
+import { findFirstQdnImageRef } from '../services/rich-text/richText';
 
 const PostDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const { data: post, isLoading, error } = useGetPostQuery(id || '');
-  const [liked, setLiked] = useState(false);
-  const [likeOffset, setLikeOffset] = useState(0);
   const [copied, setCopied] = useState(false);
-
-  const handleLike = () => {
-    if (liked) {
-      setLiked(false);
-      setLikeOffset((o) => o - 1);
-    } else {
-      setLiked(true);
-      setLikeOffset((o) => o + 1);
-    }
-  };
 
   const handleShare = async () => {
     const url = window.location.href;
@@ -39,12 +29,12 @@ const PostDetailPage = () => {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="animate-pulse rounded-xl bg-white p-6 shadow-sm">
-          <div className="mb-4 h-6 w-2/3 rounded bg-slate-200" />
+        <div className="animate-pulse rounded-xl bg-[var(--color-surface)] p-6 shadow-sm">
+          <div className="mb-4 h-6 w-2/3 rounded bg-[var(--color-surface-muted)]" />
           <div className="space-y-2">
-            <div className="h-4 w-full rounded bg-slate-100" />
-            <div className="h-4 w-5/6 rounded bg-slate-100" />
-            <div className="h-4 w-4/6 rounded bg-slate-100" />
+            <div className="h-4 w-full rounded bg-[var(--color-surface-muted)]" />
+            <div className="h-4 w-5/6 rounded bg-[var(--color-surface-muted)]" />
+            <div className="h-4 w-4/6 rounded bg-[var(--color-surface-muted)]" />
           </div>
         </div>
       </div>
@@ -53,19 +43,21 @@ const PostDetailPage = () => {
 
   if (error || !post) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
-        <p className="mb-3 text-red-700">
+      <div className="rounded-xl border border-red-800 bg-red-950 p-6 text-center">
+        <p className="mb-3 text-red-400">
           {typeof error === 'string' ? error : 'Post not found.'}
         </p>
         <Link
           to="/"
-          className="text-sm font-medium text-cyan-600 hover:text-cyan-800"
+          className="text-sm font-medium text-cyan-600 hover:text-cyan-300"
         >
           &larr; Back to Home
         </Link>
       </div>
     );
   }
+
+  const hasInlineImage = findFirstQdnImageRef(post.content) !== null;
 
   return (
     <div className="space-y-6">
@@ -81,7 +73,7 @@ const PostDetailPage = () => {
       {/* Post content */}
       <article className="rounded-xl bg-[var(--color-surface-card)] p-6 shadow-sm">
         {post.isPinned && (
-          <div className="mb-3 flex items-center gap-1.5 text-xs font-medium text-amber-600">
+          <div className="mb-3 flex items-center gap-1.5 text-xs font-medium text-amber-400">
             <Pin className="h-3.5 w-3.5" />
             Pinned Post
           </div>
@@ -91,13 +83,15 @@ const PostDetailPage = () => {
           {post.title}
         </h1>
 
-        {/* Cover image */}
-        {post.coverMediaUrl && (
+        {/* Legacy / derived cover image is shown only when the body does not
+            already render the image inline. */}
+        {!hasInlineImage && post.coverImageRef && (
           <div className="mb-4 overflow-hidden rounded-xl">
-            <img
-              src={post.coverMediaUrl}
+            <QdnImage
+              imageRef={post.coverImageRef}
               alt={post.title}
               className="max-h-96 w-full object-cover"
+              loading="eager"
             />
           </div>
         )}
@@ -108,38 +102,26 @@ const PostDetailPage = () => {
           </span>
           <span className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
-            {new Date(post.createdAt).toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
+            {post.createdAt
+              ? new Date(post.createdAt).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : 'Unknown'}
           </span>
         </div>
 
-        <div className="prose prose-slate max-w-none">
-          {parseMarkdown(post.content)}
-        </div>
+        <RichTextContent value={post.content} />
 
         {/* Post stats */}
-        <div className="mt-6 flex items-center gap-4 border-t border-slate-100 pt-4 text-sm text-[var(--color-text-muted)]">
+        <div className="mt-6 flex items-center gap-4 border-t border-slate-700 pt-4 text-sm text-[var(--color-text-muted)]">
           <div className="flex items-center gap-1.5">
             <MessageCircle className="h-4 w-4" />
-            <span>{post.comments?.length ?? post.commentsCount} comments</span>
+            <span>{post.comments?.length ?? 0} comments</span>
           </div>
-          <button
-            onClick={handleLike}
-            className={`flex items-center gap-1.5 transition ${
-              liked ? 'text-rose-500' : 'hover:text-rose-400'
-            }`}
-          >
-            <Heart
-              className={`h-4 w-4 ${liked ? 'fill-current' : ''}`}
-            />
-            <span>{post.likesCount + likeOffset} likes</span>
-          </button>
-
           {/* Share button */}
           <button
             onClick={handleShare}

@@ -10,15 +10,13 @@ import {
   Menu,
   X,
   Settings,
-  Sun,
-  Moon,
-  Search,
   User,
   Wifi,
   WifiOff,
   MessageSquare,
   LifeBuoy,
   BookOpen,
+  Calendar,
   Copy,
   Check,
   ExternalLink,
@@ -27,28 +25,20 @@ import { useAppSelector } from '../../store';
 import { isQortiumBridgeAvailable, requestQortium } from '../../services/qortium/qortiumClient';
 import UserRoleBadge from '../common/UserRoleBadge';
 import FundBalance from '../common/FundBalance';
+import GlobalSearch from '../search/GlobalSearch';
 
 const navItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/forum', label: 'Forum', icon: MessageSquare },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
   { to: '/polls', label: 'Polls', icon: BarChart3 },
+  { to: '/events', label: 'Events', icon: Calendar },
   { to: '/donations', label: 'Donations', icon: Heart },
   { to: '/support', label: 'Support', icon: LifeBuoy },
   { to: '/wiki', label: 'Wiki', icon: BookOpen },
 ];
 
-const Header = ({
-  isDark,
-  onToggleTheme,
-  searchQuery,
-  onSearchChange,
-}: {
-  isDark: boolean;
-  onToggleTheme: () => void;
-  searchQuery: string;
-  onSearchChange: (q: string) => void;
-}) => {
+const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { name, role, isAuthenticated, isLoading } = useAppSelector(
     (state) => state.auth
@@ -56,7 +46,7 @@ const Header = ({
 
   const isAdmin =
     isAuthenticated &&
-    ['SysOp', 'SuperAdmin', 'Admin'].includes(role);
+    (role === 'SysOp' || role === 'Admin');
 
   const bridgeAvailable = isQortiumBridgeAvailable();
 
@@ -115,13 +105,13 @@ const Header = ({
   };
 
   return (
-    <header className="relative z-30 bg-gradient-to-br from-slate-900 via-slate-800 to-cyan-950 text-white">
+    <header className="relative z-30 bg-gradient-to-br from-[var(--color-surface-banner)] via-[var(--color-surface-banner-accent)] to-[var(--color-surface-banner)] text-white">
       {/* Subtle background pattern */}
       <div
         className="pointer-events-none absolute inset-0 overflow-hidden opacity-[0.03]"
         style={{
           backgroundImage:
-            'radial-gradient(circle at 20% 50%, #06b6d4 1px, transparent 1px), radial-gradient(circle at 80% 20%, #22d3ee 1px, transparent 1px)',
+            'radial-gradient(circle at 20% 50%, var(--color-accent) 1px, transparent 1px), radial-gradient(circle at 80% 20%, var(--color-accent) 1px, transparent 1px)',
           backgroundSize: '40px 40px, 60px 60px',
         }}
       />
@@ -129,7 +119,7 @@ const Header = ({
       {/* Top bar: User info (left) + Fund balance + controls (right) */}
       <div className="relative flex items-center gap-3 px-4 py-3 sm:px-6">
         {/* Avatar */}
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-sm font-bold text-white shadow-lg shadow-cyan-500/25">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-[var(--color-accent)] text-sm font-bold text-white shadow-lg shadow-cyan-500/25">
           {isLoading ? (
             <span className="animate-pulse">...</span>
           ) : (
@@ -171,15 +161,6 @@ const Header = ({
             </span>
           </span>
 
-          {/* Dark mode toggle */}
-          <button
-            onClick={onToggleTheme}
-            className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
-
           {/* Mobile menu toggle */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -218,15 +199,8 @@ const Header = ({
           <div className="flex-1" />
 
           {/* Search bar */}
-          <div className="relative mx-2 hidden md:block">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search posts..."
-              className="w-44 rounded-lg border border-white/10 bg-white/5 py-1.5 pl-8 pr-3 text-sm text-white placeholder:text-slate-500 transition focus:w-56 focus:border-cyan-400/50 focus:bg-white/10 focus:outline-none"
-            />
+          <div className="relative mx-2 hidden w-44 md:block md:w-56">
+            <GlobalSearch />
           </div>
 
           {/* Profile popup trigger */}
@@ -242,10 +216,10 @@ const Header = ({
             {showProfilePopup && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowProfilePopup(false)} />
-                <div className="absolute right-0 top-full z-[60] mt-1 w-64 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-card)] p-4 shadow-xl dark:text-[var(--color-text-primary)]">
+                <div className="absolute right-0 top-full z-[60] mt-1 w-64 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-card)] p-4 text-[var(--color-text-primary)] shadow-xl">
                   {/* Avatar + Name */}
                   <div className="mb-3 flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-sm font-bold text-white">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-[var(--color-accent)] text-sm font-bold text-white">
                       {initialsFromName(name)}
                     </div>
                     <div className="min-w-0">
@@ -255,23 +229,23 @@ const Header = ({
                   </div>
 
                   {/* Address */}
-                  <div className="mb-3 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50">
+                  <div className="mb-3 rounded-lg bg-[var(--color-surface-muted)]/50 p-2">
                     <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">Wallet Address</p>
                     <div className="flex items-center gap-1.5">
                       <code className="flex-1 truncate text-xs">{address?.slice(0, 12)}...{address?.slice(-8)}</code>
-                      <button onClick={copyAddress} className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition hover:bg-slate-200 dark:hover:bg-slate-700">
+                      <button onClick={copyAddress} className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition hover:bg-slate-700">
                         {addressCopied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
                       </button>
                     </div>
                   </div>
 
                   {/* Balance */}
-                  <div className="mb-3 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50">
+                  <div className="mb-3 rounded-lg bg-[var(--color-surface-muted)]/50 p-2">
                     <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">Balance</p>
                     {userBalance === null ? (
-                      <div className="h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-5 w-20 animate-pulse rounded bg-[var(--color-surface-muted)]" />
                     ) : (
-                      <p className="text-sm font-semibold tabular-nums text-emerald-600">
+                      <p className="text-sm font-semibold tabular-nums text-[var(--color-success)]">
                         {userBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })} QORT
                       </p>
                     )}
@@ -281,7 +255,7 @@ const Header = ({
                   <Link
                     to="/profile"
                     onClick={() => setShowProfilePopup(false)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2 text-xs font-medium text-white transition hover:bg-cyan-700"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--color-accent)] py-2 text-xs font-medium text-white transition hover:bg-[var(--color-accent-hover)]"
                   >
                     <ExternalLink className="h-3 w-3" />
                     View Full Profile
@@ -317,6 +291,9 @@ const Header = ({
         {/* Mobile nav */}
         {isMobileMenuOpen && (
           <div className="flex flex-col gap-1 py-3 lg:hidden">
+            <div className="px-3 pb-2">
+              <GlobalSearch />
+            </div>
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -326,7 +303,7 @@ const Header = ({
                 className={({ isActive }) =>
                   `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-cyan-500/20 text-white'
+                      ? 'bg-[var(--color-accent)]/20 text-white'
                       : 'text-slate-400 hover:bg-white/5 hover:text-white'
                   }`
                 }

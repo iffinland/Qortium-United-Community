@@ -85,6 +85,14 @@ const tagsField = z.array(z.string().min(1).max(32).trim()).max(10).optional();
 const imageEntityIdField = z.string().max(64).optional();
 const websiteField = z.string().url().max(500).optional().or(z.literal(''));
 const repositoryField = z.string().url().max(500).optional().or(z.literal(''));
+const categoryField = z.string().trim().min(1).max(50).optional();
+const qdnUrlField = z
+  .string()
+  .trim()
+  .min('qdn://x/x'.length)
+  .max(500)
+  .regex(/^qdn:\/\//i, 'QDN URL must start with qdn://')
+  .optional();
 const donationAddressField = walletAddressField.optional();
 const fundingGoalField = z.number().int().positive().optional();
 const editedAtField = z.number().int().positive().optional();
@@ -102,6 +110,8 @@ export const projectSchema = authoritativeEntityBase.extend({
   imageEntityId: imageEntityIdField,
   website: websiteField,
   repository: repositoryField,
+  category: categoryField,
+  qdnUrl: qdnUrlField,
   donationAddress: donationAddressField,
   fundingGoal: fundingGoalField,
   editedAt: editedAtField,

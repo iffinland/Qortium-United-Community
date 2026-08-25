@@ -240,13 +240,13 @@ describe('mixed-resource full-chain', () => {
     envForgedName.metadata.name = 'Alice';
     envForgedName.data.ownerName = 'Eve';
 
-    const projBadLifecycle = makeProjectPayload({ entityId: 'proj00003', status: 'completed' }); // invalid initial
+    const projTerminal = makeProjectPayload({ entityId: 'proj00003', status: 'completed' });
 
     const envs = [
       makeEnvelope(proj1, BASE_TIME, OWNER),
       makeEnvelope(proj2, BASE_TIME + 1000, OWNER),
       envForgedName,
-      makeEnvelope(projBadLifecycle, BASE_TIME, OWNER),
+      makeEnvelope(projTerminal, BASE_TIME, OWNER),
     ];
 
     const resourceMap = new Map<string, unknown>();
@@ -262,11 +262,13 @@ describe('mixed-resource full-chain', () => {
     }, projectPolicy, identityResolver, { service: 'DOCUMENT', identifierPrefix: 'qucp-project-' });
 
     const reduced = reduceProjectResults(result);
-    // Only proj00001 should survive
-    expect(reduced.projects.length).toBe(1);
-    expect(reduced.projects[0].entityId).toBe('proj00001');
-    expect(reduced.projects[0].canonicalOwnerWallet).toBe(OWNER);
-    expect(reduced.projects[0].status).toBe('active');
+    // proj00002 is rejected for a forged owner name; proj00001 and the
+    // terminal proj00003 both survive as their current-coordinate payloads.
+    expect(reduced.projects.map((p) => p.entityId).sort()).toEqual(['proj00001', 'proj00003']);
+    const byId = new Map(reduced.projects.map((p) => [p.entityId, p]));
+    expect(byId.get('proj00001')?.canonicalOwnerWallet).toBe(OWNER);
+    expect(byId.get('proj00001')?.status).toBe('active');
+    expect(byId.get('proj00003')?.status).toBe('completed');
   });
 });
 
@@ -460,11 +462,14 @@ describe('update publication builder', () => {
     expect(result.identifier).toBe('qucp-project-proj00001');
   });
 
-  it('non-owner rejected', () => {
+  it('cross-publisher update allowed (shared Admin-managed state)', () => {
     const result = buildUpdateProjectPayload(current, { ownerName: 'Eve', ownerAddress: FOREIGN }, {
       title: 'Hack', description: 'Hack', status: 'active',
     });
-    expect(result.error).toBeDefined();
+    expect(result.error).toBeUndefined();
+    expect(result.payload!.ownerName).toBe('Eve');
+    expect(result.payload!.ownerAddress).toBe(FOREIGN);
+    expect(result.payload!.entityId).toBe('proj00001');
   });
 
   it('archived project update rejected', () => {

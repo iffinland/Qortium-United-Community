@@ -50,6 +50,12 @@ export {
 } from './supportTicketSchema';
 
 export {
+  supportTicketStatusSchema,
+  SUPPORT_TICKET_STATUS_ACTION,
+  type QucpSupportTicketStatus,
+} from './supportTicketStatusSchema';
+
+export {
   postCommentSchema,
   POST_COMMENT_IMMUTABLE_FIELDS,
   type QucpPostComment,
@@ -118,3 +124,13 @@ export {
   type SupportedMediaService,
   type QucpMediaReference,
 } from './mediaReferenceSchema';
+
+export {
+  eventSchema,
+  EVENT_STATUS_VALUES,
+  EVENT_LIFECYCLE_TRANSITIONS,
+  EVENT_IMMUTABLE_FIELDS,
+  isApprovedEventLifecycleTransition,
+  type EventStatus,
+  type QucpEvent,
+} from './eventSchema';

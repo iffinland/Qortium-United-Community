@@ -48,6 +48,8 @@ export async function queryPolls(
     pageSize: params?.pageSize,
     safetyMax: params?.safetyMax,
     signal: params?.signal,
+    adminAuthority: params?.adminAuthority,
+    sharedAdminOwnership: params?.sharedAdminOwnership,
   });
 }
 

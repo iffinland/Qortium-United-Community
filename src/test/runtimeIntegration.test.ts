@@ -9,7 +9,7 @@ import {
 import { postPolicy } from '../services/qdn/policies/postPolicy';
 import { buildPostPayload, POST_SEARCH_PREFIX } from '../services/qdn/runtime/postRuntime';
 import { buildCommentPayload, COMMENT_SEARCH_PREFIX } from '../services/qdn/runtime/commentRuntime';
-import { buildWikiPayload, WIKI_SEARCH_PREFIX } from '../services/qdn/runtime/wikiRuntime';
+import { buildWikiCreatePayload, WIKI_SEARCH_PREFIX } from '../services/qdn/runtime/wikiRuntime';
 import { buildTombstonePayload } from '../services/qdn/runtime/tombstoneRuntime';
 import { toResolvedMediaView } from '../services/qdn/runtime/mediaRuntime';
 import { resetIdentityResolver, getIdentityResolver } from '../services/qdn/runtime/identityResolverAdapter';
@@ -25,7 +25,7 @@ describe('UNIT: Builders', () => {
   it('post: no imageUrl', () => { const x = buildPostPayload({ entityId: 'u1', title: 'T', content: 'C', ownerName: 'o', ownerAddress: 'addr' }); expect((x as any).imageUrl).toBeUndefined(); });
   it('post: coverMediaEntityId', () => { const x = buildPostPayload({ entityId: 'u2', title: 'T', content: 'C', ownerName: 'o', ownerAddress: 'addr', coverMediaEntityId: 'mr1' }); expect(x.coverMediaEntityId).toBe('mr1'); });
   it('comment: valid', () => { const c = buildCommentPayload({ entityId: 'c1', parentEntityId: 'p1', content: 'C', authorName: 'a', authorAddress: 'addr' }); expect(c.resourceFamily).toBe('qucp-post-comment'); });
-  it('wiki: valid', () => { const w = buildWikiPayload({ entityId: 'w1', categoryId: 'g', title: 'T', slug: 't', content: 'C', ownerName: 'o', ownerAddress: 'addr' }); expect(w.resourceFamily).toBe('qucp-wiki'); });
+  it('wiki: valid', () => { const w = buildWikiCreatePayload({ entityId: 'w1', categoryId: 'g', title: 'T', slug: 't', content: 'C', ownerName: 'o', ownerAddress: 'addr', createdAt: 1700000000000 }); expect(w.resourceFamily).toBe('qucp-wiki'); });
   it('prefixes', () => { expect(POST_SEARCH_PREFIX).toBe('qucp-post-'); expect(COMMENT_SEARCH_PREFIX).toBe('qucp-post-comment-'); expect(WIKI_SEARCH_PREFIX).toBe('qucp-wiki-'); });
 });
 
@@ -78,14 +78,14 @@ describe('INTEGRATION: Media', () => {
 
 // === UNIT: Wiki Slugs ===
 describe('UNIT: Wiki', () => {
-  it('entity stable across slug changes', () => { const a = buildWikiPayload({ entityId: 'w1', slug: 'old', categoryId: 'g', title: 'T', content: 'C', ownerName: 'o', ownerAddress: 'a' }); const b = buildWikiPayload({ entityId: 'w1', slug: 'new', categoryId: 'g', title: 'T', content: 'C', ownerName: 'o', ownerAddress: 'a' }); expect(a.entityId).toBe(b.entityId); expect(a.slug).not.toBe(b.slug); });
-  it('different owners same slug', () => { const a = buildWikiPayload({ entityId: 'w1', slug: 'guide', categoryId: 'g', title: 'T', content: 'C', ownerName: 'alice', ownerAddress: 'aa' }); const b = buildWikiPayload({ entityId: 'w2', slug: 'guide', categoryId: 'g', title: 'T', content: 'C', ownerName: 'bob', ownerAddress: 'bb' }); expect(a.slug).toBe(b.slug); expect(a.entityId).not.toBe(b.entityId); });
+  it('entity stable across slug changes', () => { const a = buildWikiCreatePayload({ entityId: 'w1', slug: 'old', categoryId: 'g', title: 'T', content: 'C', ownerName: 'o', ownerAddress: 'a', createdAt: 1700000000000 }); const b = buildWikiCreatePayload({ entityId: 'w1', slug: 'new', categoryId: 'g', title: 'T', content: 'C', ownerName: 'o', ownerAddress: 'a', createdAt: 1700000000000 }); expect(a.entityId).toBe(b.entityId); expect(a.slug).not.toBe(b.slug); });
+  it('different owners same slug', () => { const a = buildWikiCreatePayload({ entityId: 'w1', slug: 'guide', categoryId: 'g', title: 'T', content: 'C', ownerName: 'alice', ownerAddress: 'aa', createdAt: 1700000000000 }); const b = buildWikiCreatePayload({ entityId: 'w2', slug: 'guide', categoryId: 'g', title: 'T', content: 'C', ownerName: 'bob', ownerAddress: 'bb', createdAt: 1700000000000 }); expect(a.slug).toBe(b.slug); expect(a.entityId).not.toBe(b.entityId); });
   it('collision: lexicographic by owner', () => { const arts = [{ eid: 'w2', addr: 'bb' }, { eid: 'w1', addr: 'aa' }]; arts.sort((x, y) => x.addr.localeCompare(y.addr)); expect(arts[0].eid).toBe('w1'); });
 });
 
 // === APPLICABILITY: Reactions & Moderation ===
 describe('APPLICABILITY', () => {
-  it('posts: reactions APPLICABLE (like button exists)', () => { expect(true).toBe(true); });
+  it('posts: reactions disabled for BETA (no local-only success state)', () => { expect(true).toBe(true); });
   it('comments: reactions NOT APPLICABLE', () => { expect(true).toBe(true); });
   it('wiki: reactions NOT APPLICABLE', () => { expect(true).toBe(true); });
   it('post moderation: INFRASTRUCTURE ONLY', () => { expect(true).toBe(true); });

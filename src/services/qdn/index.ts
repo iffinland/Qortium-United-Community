@@ -135,9 +135,26 @@ export {
   WIKI_SEARCH_PREFIX,
   type WikiQueryResult,
   type ValidatedWikiArticle,
-  buildWikiPayload,
+  generateWikiEntityId,
+  wikiSlug,
+  buildWikiCreatePayload,
+  buildWikiUpdatePayload,
   queryWikiArticles,
 } from './runtime/wikiRuntime';
+
+// Event runtime
+export {
+  EVENT_SEARCH_PREFIX,
+  type EventQueryResult,
+  type ValidatedEvent,
+  generateEventEntityId,
+  buildEventCreatePayload,
+  buildEventUpdatePayload,
+  queryEvents,
+  fetchValidatedEventByEntityId,
+  type EventLookupResult,
+  type EventLookupStatus,
+} from './runtime/eventRuntime';
 
 // Media runtime
 export {

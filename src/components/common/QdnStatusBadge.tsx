@@ -14,17 +14,17 @@ const statusConfig: Record<QdnStatus, { icon: typeof CheckCircle2; label: string
   ready: {
     icon: CheckCircle2,
     label: 'QDN Ready',
-    cls: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+    cls: 'border-emerald-800 bg-emerald-950 text-emerald-300',
   },
   syncing: {
     icon: Loader2,
     label: 'QDN Syncing',
-    cls: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    cls: 'border-amber-800 bg-amber-950 text-amber-300',
   },
   offline: {
     icon: CloudOff,
     label: 'QDN Offline',
-    cls: 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400',
+    cls: 'border-slate-700 bg-[var(--color-surface-muted)] text-slate-400',
   },
 };
 

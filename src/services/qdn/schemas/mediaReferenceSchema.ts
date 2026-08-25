@@ -17,6 +17,7 @@ export const MEDIA_PARENT_FAMILIES = [
   'qucp-wiki',
   'qucp-forum-topic',
   'qucp-support-ticket',
+  'qucp-project',
 ] as const;
 export type MediaParentFamily = (typeof MEDIA_PARENT_FAMILIES)[number];
 
@@ -45,7 +46,7 @@ export type SupportedMediaService = (typeof SUPPORTED_MEDIA_SERVICES)[number];
 // ---- Role-Parent Compatibility ----
 
 export const MEDIA_ROLE_PARENT_MATRIX: Record<MediaRole, readonly MediaParentFamily[]> = {
-  cover:           ['qucp-post', 'qucp-wiki'],
+  cover:           ['qucp-post', 'qucp-wiki', 'qucp-project'],
   thumbnail:       ['qucp-post', 'qucp-wiki'],
   'inline-image':  ['qucp-post', 'qucp-wiki', 'qucp-forum-topic'],
   attachment:      ['qucp-post', 'qucp-forum-topic', 'qucp-support-ticket', 'qucp-wiki'],

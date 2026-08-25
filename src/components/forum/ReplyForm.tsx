@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { Send, X } from 'lucide-react';
 import { useAddReplyMutation } from '../../store/api/forumApi';
 import { useAppSelector } from '../../store';
+import { RichTextEditor } from '../editor/RichTextEditor';
 
 interface ReplyFormProps {
   threadId: string;
@@ -47,25 +48,25 @@ const ReplyForm = ({
         <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
           Replying to <strong className="text-cyan-600">{replyToName}</strong>
           {onCancel && (
-            <button type="button" onClick={onCancel} className="rounded p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <button type="button" onClick={onCancel} className="rounded p-0.5 hover:bg-slate-800">
               <X className="h-3 w-3" />
             </button>
           )}
         </div>
       )}
-      <div className="relative">
-        <textarea
+      <div className="space-y-2">
+        <RichTextEditor
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={setContent}
+          ownerName={name || ''}
           placeholder={isAuthenticated ? 'Write a reply...' : 'Sign in to reply'}
           disabled={!isAuthenticated || isSubmitting}
-          rows={2}
-          className="w-full resize-none rounded-lg border border-[var(--color-border-subtle)] bg-white p-2.5 pr-10 text-sm dark:bg-slate-900"
+          minRows={2}
         />
         <button
           type="submit"
           disabled={!content.trim() || isSubmitting}
-          className="absolute bottom-2 right-2 rounded p-1 text-cyan-500 transition hover:bg-cyan-50 disabled:opacity-30 dark:hover:bg-cyan-950"
+          className="rounded p-1 text-cyan-500 transition hover:bg-cyan-950 disabled:opacity-30"
         >
           <Send className="h-3.5 w-3.5" />
         </button>

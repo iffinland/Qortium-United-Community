@@ -9,6 +9,7 @@ import type { QdnResourceEnvelope } from '../QdnResourceEnvelope';
 import type { QucpVote } from '../schemas/voteSchema';
 import { compareByQdnMetadata } from '../ordering/authoritativeEntityOrdering';
 import { warningDiag, type QdnDiagnostic } from '../diagnostics';
+import { sha256Hex } from '../identifiers/sha256';
 
 // ---- Result ----
 
@@ -28,38 +29,28 @@ export interface VoteReductionResult {
 
 /**
  * Build a deterministic vote entity ID from poll entity ID and voter wallet.
- * Uses SHA-256 for collision resistance.
- */
-export async function buildDeterministicVoteEntityId(
-  pollEntityId: string,
-  voterWallet: string,
-): Promise<string> {
-  const input = `qucp-vote:${pollEntityId}:${voterWallet}`;
-  const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(input));
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  // Take first 16 hex chars (64 bits) for entity-safe ID
-  return hashArray.slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Synchronous fallback for test environments where crypto.subtle is available.
+ *
+ * This is the canonical, synchronous implementation. The writer and the
+ * contextual vote authorizer MUST use this exact function, otherwise valid
+ * votes are published under one entity ID and rejected under another.
  */
 export function buildDeterministicVoteEntityIdSync(
   pollEntityId: string,
   voterWallet: string,
 ): string {
-  // Simple deterministic hash for tests — production uses SHA-256 above
-  let hash = 0;
-  const str = `qucp-vote:${pollEntityId}:${voterWallet}`;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  // Convert to hex, ensure minimum 8 chars
-  const hex = Math.abs(hash).toString(16).padStart(8, '0');
-  return hex.slice(0, 16);
+  const input = `qucp-vote:${pollEntityId}:${voterWallet}`;
+  // First 16 hex characters (64 bits) of the full SHA-256 digest.
+  return sha256Hex(input).slice(0, 16);
+}
+
+/**
+ * Async-compatible alias kept for the publication layer.
+ */
+export async function buildDeterministicVoteEntityId(
+  pollEntityId: string,
+  voterWallet: string,
+): Promise<string> {
+  return buildDeterministicVoteEntityIdSync(pollEntityId, voterWallet);
 }
 
 // ---- Reduction ----

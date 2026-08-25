@@ -14,6 +14,7 @@ import {
   warningDiag,
   type QdnDiagnostic,
 } from './diagnostics';
+import { isBridgeError } from './qdnErrors';
 
 // ---- Types ----
 
@@ -35,6 +36,21 @@ export interface PaginatedSearchParams {
   safetyMax?: number;
   /** AbortSignal for cancellation */
   signal?: AbortSignal;
+  /**
+   * Optional reader-side filter applied to each metadata record.
+   *
+   * Non-matching records are excluded from the result and, critically, are
+   * excluded from the configured `safetyMax` result budget. This prevents an
+   * overlapping child family (for example `qucp-post-comment-*` while
+   * discovering `qucp-post-*`) from consuming the parent domain's budget and
+   * starving older parent entities.
+   */
+  filter?: (metadata: QdnResourceMetadata) => boolean;
+  /**
+   * Absolute safety cap on raw pages/records read regardless of filtering.
+   * Defaults to `Math.max(safetyMax, safetyMax * 10)`.
+   */
+  rawSafetyMax?: number;
 }
 
 /** Result shape for paginated search. */
@@ -49,6 +65,8 @@ export interface PaginatedQdnSearchResult {
   rawResultCount: number;
   /** Number of duplicate metadata records removed */
   deduplicatedCount: number;
+  /** Number of raw records removed by the optional result filter. */
+  filteredCount: number;
   /** Why the search stopped (only meaningful when complete === false) */
   reason?:
     | 'exhausted'
@@ -101,6 +119,9 @@ export async function paginatedQdnSearch(
   const reverse = params.reverse ?? true;
   const includeMetadata = params.includeMetadata ?? true;
   const prefix = params.prefix ?? true;
+  const filter = params.filter;
+  const rawSafetyMax =
+    params.rawSafetyMax ?? Math.max(safetyMax, safetyMax * 10);
 
   const diagnostics: QdnDiagnostic[] = [];
   const seen = new Set<string>();
@@ -109,6 +130,7 @@ export async function paginatedQdnSearch(
   let pagesRead = 0;
   let rawResultCount = 0;
   let deduplicatedCount = 0;
+  let filteredCount = 0;
   let lastPageFingerprint: string | null = null;
 
   // Result order should be stable across pages when reverse: true:
@@ -129,17 +151,20 @@ export async function paginatedQdnSearch(
         pagesRead,
         rawResultCount,
         deduplicatedCount,
+        filteredCount,
         reason: 'cancelled',
         diagnostics,
       };
     }
 
-    // Check safety budget before fetching next page
-    if (rawResultCount >= safetyMax) {
+    // Check the effective result budget before fetching the next page. When a
+    // filter is present this counts only matching records, so child resources
+    // cannot starve the parent family.
+    if (items.length >= safetyMax) {
       diagnostics.push(
         warningDiag(
           'SAFETY_BUDGET_REACHED',
-          `Safety budget of ${safetyMax} raw results reached. ${items.length} unique items retained.`,
+          `Safety budget of ${safetyMax} matching results reached. ${items.length} unique items retained.`,
         ),
       );
       return {
@@ -148,6 +173,28 @@ export async function paginatedQdnSearch(
         pagesRead,
         rawResultCount,
         deduplicatedCount,
+        filteredCount,
+        reason: 'safety-budget-reached',
+        diagnostics,
+      };
+    }
+
+    // Absolute raw safety cap keeps discovery bounded even when a filter
+    // rejects most records and the matching set stays below safetyMax.
+    if (rawResultCount >= rawSafetyMax) {
+      diagnostics.push(
+        warningDiag(
+          'SAFETY_BUDGET_REACHED',
+          `Raw safety budget of ${rawSafetyMax} records reached while filtering.`,
+        ),
+      );
+      return {
+        items,
+        complete: false,
+        pagesRead,
+        rawResultCount,
+        deduplicatedCount,
+        filteredCount,
         reason: 'safety-budget-reached',
         diagnostics,
       };
@@ -166,6 +213,26 @@ export async function paginatedQdnSearch(
         includeMetadata,
       });
     } catch (err) {
+      if (isBridgeError(err) && err.code === 'TIMEOUT') {
+        diagnostics.push(
+          warningDiag(
+            'SEARCH_TIMEOUT',
+            `Search request timed out at offset ${offset}: ${err.message}`,
+            { service: params.service, identifier: params.identifier },
+          ),
+        );
+        return {
+          items,
+          complete: false,
+          pagesRead,
+          rawResultCount,
+          deduplicatedCount,
+          filteredCount,
+          reason: 'timeout',
+          diagnostics,
+        };
+      }
+
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
       diagnostics.push(
         warningDiag(
@@ -180,6 +247,7 @@ export async function paginatedQdnSearch(
         pagesRead,
         rawResultCount,
         deduplicatedCount,
+        filteredCount,
         reason: 'request-failed',
         diagnostics,
       };
@@ -202,6 +270,7 @@ export async function paginatedQdnSearch(
         pagesRead,
         rawResultCount,
         deduplicatedCount,
+        filteredCount,
         reason: 'invalid-response',
         diagnostics,
       };
@@ -233,6 +302,7 @@ export async function paginatedQdnSearch(
         pagesRead,
         rawResultCount,
         deduplicatedCount,
+        filteredCount,
         reason: 'repeated-page',
         diagnostics,
       };
@@ -245,6 +315,10 @@ export async function paginatedQdnSearch(
     for (const raw of pageResults) {
       const meta = extractMetadata(raw);
       if (!meta) continue;
+      if (filter && !filter(meta)) {
+        filteredCount++;
+        continue;
+      }
 
       const key = metadataDedupeKey(meta);
       if (seen.has(key)) {
@@ -270,6 +344,7 @@ export async function paginatedQdnSearch(
         pagesRead,
         rawResultCount,
         deduplicatedCount,
+        filteredCount,
         reason: 'exhausted',
         diagnostics,
       };

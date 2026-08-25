@@ -6,26 +6,24 @@
 
 import { useState, type FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Clock, CheckCircle2, Circle, Archive, ArrowLeft, Edit3, AlertTriangle, ExternalLink, GitBranch } from 'lucide-react';
+import { Clock, CheckCircle2, Circle, Archive, ArrowLeft, Edit3, AlertTriangle, ExternalLink, GitBranch, FolderKanban } from 'lucide-react';
 import {
   useGetProjectQuery,
   useUpdateProjectMutation,
 } from '../store/api/projectApi';
 import { useAppSelector } from '../store';
-import { PROJECT_STATUS_VALUES, type ProjectStatus } from '../services/qdn/schemas/projectSchema';
+import { PROJECT_STATUS_VALUES, VALID_LIFECYCLE_TRANSITIONS, type ProjectStatus } from '../services/qdn/schemas/projectSchema';
+import { openQdnUrl } from '../services/qortium/qdnNavigation';
+import { RichTextEditor } from '../components/editor/RichTextEditor';
+import { RichTextContent } from '../components/editor/RichTextContent';
+import { QdnImage } from '../components/editor/QdnImage';
+import { findFirstQdnImageRef } from '../services/rich-text/richText';
 
 const STATUS_CONFIG: Record<ProjectStatus, { label: string; icon: typeof Clock; className: string }> = {
-  planned: { label: 'Planned', icon: Circle, className: 'bg-amber-50 text-amber-700 border-amber-200' },
-  active: { label: 'Active', icon: Clock, className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  completed: { label: 'Completed', icon: CheckCircle2, className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  archived: { label: 'Archived', icon: Archive, className: 'bg-slate-50 text-slate-700 border-slate-200' },
-};
-
-const FORWARD_STATUSES: Record<ProjectStatus, ProjectStatus[]> = {
-  planned: ['planned', 'active', 'completed', 'archived'],
-  active: ['active', 'completed', 'archived'],
-  completed: ['completed', 'archived'],
-  archived: ['archived'],
+  planned: { label: 'Planned', icon: Circle, className: 'bg-amber-950 text-amber-400 border-amber-800' },
+  active: { label: 'Active', icon: Clock, className: 'bg-blue-950 text-blue-400 border-blue-800' },
+  completed: { label: 'Completed', icon: CheckCircle2, className: 'bg-emerald-950 text-emerald-400 border-emerald-800' },
+  archived: { label: 'Archived', icon: Archive, className: 'bg-[var(--color-surface-muted)] text-slate-300 border-[var(--color-border-subtle)]' },
 };
 
 const ProjectDetailPage = () => {
@@ -48,6 +46,8 @@ const ProjectDetailPage = () => {
   const [editTags, setEditTags] = useState('');
   const [editWebsite, setEditWebsite] = useState('');
   const [editRepository, setEditRepository] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editQdnUrl, setEditQdnUrl] = useState('');
   const [editFeedback, setEditFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const startEditing = () => {
@@ -58,6 +58,8 @@ const ProjectDetailPage = () => {
     setEditTags(project.tags.join(', '));
     setEditWebsite(project.website ?? '');
     setEditRepository(project.repository ?? '');
+    setEditCategory(project.category ?? '');
+    setEditQdnUrl(project.qdnUrl ?? '');
     setIsEditing(true);
     setEditFeedback(null);
   };
@@ -83,8 +85,13 @@ const ProjectDetailPage = () => {
         imageEntityId: project.imageEntityId,
         website: editWebsite.trim() || undefined,
         repository: editRepository.trim() || undefined,
+        category: editCategory.trim() || undefined,
+        qdnUrl: editQdnUrl.trim() || undefined,
         ownerName,
         ownerAddress: walletAddress,
+        existingStatus: project.status,
+        existingOwnerName: project.ownerName,
+        existingOwnerAddress: project.ownerAddress,
         existingDonationAddress: project.donationAddress,
         existingFundingGoal: project.fundingGoal,
         existingCreatedAt: project.createdAt ? new Date(project.createdAt).getTime() : Date.now(),
@@ -101,13 +108,23 @@ const ProjectDetailPage = () => {
     }
   };
 
+  const handleOpenQdnUrl = async () => {
+    if (!project?.qdnUrl) return;
+    try {
+      await openQdnUrl(project.qdnUrl);
+    } catch (err) {
+      console.error('Failed to open QDN URL:', err);
+      window.alert(err instanceof Error ? err.message : 'Failed to open QDN URL.');
+    }
+  };
+
   // ---- Render: Loading ----
   if (isLoading) {
     return (
-      <div className="animate-pulse rounded-xl bg-white p-6 shadow-sm">
-        <div className="mb-3 h-6 w-1/3 rounded bg-slate-200" />
-        <div className="mb-2 h-4 w-full rounded bg-slate-100" />
-        <div className="h-4 w-2/3 rounded bg-slate-100" />
+      <div className="animate-pulse rounded-xl bg-[var(--color-surface)] p-6 shadow-sm">
+        <div className="mb-3 h-6 w-1/3 rounded bg-[var(--color-surface-muted)]" />
+        <div className="mb-2 h-4 w-full rounded bg-[var(--color-surface-muted)]" />
+        <div className="h-4 w-2/3 rounded bg-[var(--color-surface-muted)]" />
       </div>
     );
   }
@@ -115,12 +132,12 @@ const ProjectDetailPage = () => {
   // ---- Render: Error ----
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+      <div className="rounded-xl border border-red-800 bg-red-950 p-6 text-center">
         <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-red-400" />
-        <p className="text-red-700">Failed to load project.</p>
+        <p className="text-red-400">Failed to load project.</p>
         <button
           onClick={() => navigate('/projects')}
-          className="mt-3 inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline"
+          className="mt-3 inline-flex items-center gap-1 text-sm text-indigo-400 hover:underline"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Projects
         </button>
@@ -131,11 +148,11 @@ const ProjectDetailPage = () => {
   // ---- Render: Not Found ----
   if (!project) {
     return (
-      <div className="rounded-xl bg-white p-8 text-center shadow-sm">
+      <div className="rounded-xl bg-[var(--color-surface)] p-8 text-center shadow-sm">
         <p className="text-[var(--color-text-muted)]">Project not found.</p>
         <button
           onClick={() => navigate('/projects')}
-          className="mt-3 inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline"
+          className="mt-3 inline-flex items-center gap-1 text-sm text-indigo-400 hover:underline"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Projects
         </button>
@@ -145,13 +162,14 @@ const ProjectDetailPage = () => {
 
   const statusCfg = STATUS_CONFIG[project.status];
   const StatusIcon = statusCfg.icon;
+  const hasInlineImage = findFirstQdnImageRef(project.description) !== null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       {/* Back link */}
       <button
         onClick={() => navigate('/projects')}
-        className="inline-flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-indigo-600"
+        className="inline-flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-indigo-400"
       >
         <ArrowLeft className="h-4 w-4" /> Back to Projects
       </button>
@@ -173,13 +191,29 @@ const ProjectDetailPage = () => {
               </span>
             </div>
 
+            {!hasInlineImage && project.imageRef && (
+              <QdnImage
+                imageRef={project.imageRef}
+                alt={project.title}
+                className="mb-4 max-h-80 w-full rounded-lg border border-[var(--color-border-subtle)] object-cover"
+                loading="eager"
+              />
+            )}
+
+            {project.category && (
+              <div className="mb-4 inline-flex items-center gap-1 rounded-full border border-indigo-800 bg-indigo-950 px-2.5 py-0.5 text-xs font-medium text-indigo-400">
+                <FolderKanban className="h-3 w-3" />
+                {project.category}
+              </div>
+            )}
+
             {/* Tags */}
             {project.tags.length > 0 && (
               <div className="mb-4 flex flex-wrap gap-1.5">
                 {project.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
+                    className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs text-slate-400"
                   >
                     {tag}
                   </span>
@@ -188,18 +222,27 @@ const ProjectDetailPage = () => {
             )}
 
             {/* Description */}
-            <div className="mb-4 text-sm leading-relaxed text-[var(--color-text-secondary)] whitespace-pre-wrap">
-              {project.description}
+            <div className="mb-4 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+              <RichTextContent value={project.description} />
             </div>
 
             {/* External links */}
             <div className="mb-4 flex flex-wrap gap-3">
+              {project.qdnUrl && (
+                <button
+                  type="button"
+                  onClick={handleOpenQdnUrl}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-medium text-cyan-400 transition hover:bg-slate-800"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> QDN Link
+                </button>
+              )}
               {project.website && (
                 <a
                   href={project.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-slate-800"
                 >
                   <ExternalLink className="h-3.5 w-3.5" /> Website
                 </a>
@@ -209,7 +252,7 @@ const ProjectDetailPage = () => {
                   href={project.repository}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-slate-800"
                 >
                   <GitBranch className="h-3.5 w-3.5" /> Repository
                 </a>
@@ -218,7 +261,7 @@ const ProjectDetailPage = () => {
 
             {/* Funding info */}
             {project.donationAddress && (
-              <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+              <div className="mb-4 rounded-lg border border-emerald-800 bg-emerald-950 px-4 py-2 text-sm text-emerald-400">
                 Project donation address:{' '}
                 <span className="font-mono text-xs">
                   {project.donationAddress.slice(0, 8)}...{project.donationAddress.slice(-6)}
@@ -232,7 +275,7 @@ const ProjectDetailPage = () => {
             )}
 
             {/* Metadata */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-100 pt-3 text-xs text-[var(--color-text-muted)]">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-700 pt-3 text-xs text-[var(--color-text-muted)]">
               <span>
                 Lead: <span className="font-medium text-[var(--color-text-secondary)]">{project.ownerName}</span>
               </span>
@@ -247,11 +290,11 @@ const ProjectDetailPage = () => {
             </div>
 
             {/* Owner-only edit button */}
-            {isAuthenticated && project.isOwner && (
-              <div className="mt-4 border-t border-slate-100 pt-3">
+            {isAuthenticated && project.isOwner && project.status !== 'archived' && (
+              <div className="mt-4 border-t border-slate-700 pt-3">
                 <button
                   onClick={startEditing}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-slate-800"
                 >
                   <Edit3 className="h-3.5 w-3.5" /> Edit Project
                 </button>
@@ -267,8 +310,8 @@ const ProjectDetailPage = () => {
               <div
                 className={`rounded-lg px-3 py-2 text-sm ${
                   editFeedback.type === 'success'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-red-100 text-red-700'
+                    ? 'bg-emerald-950 text-emerald-400'
+                    : 'bg-red-950 text-red-400'
                 }`}
               >
                 {editFeedback.message}
@@ -276,38 +319,37 @@ const ProjectDetailPage = () => {
             )}
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Title *</label>
+              <label className="mb-1 block text-xs font-medium text-slate-400">Title *</label>
               <input
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 maxLength={200}
                 required
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                className="w-full rounded-lg border border-[var(--color-border-subtle)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Description *</label>
-              <textarea
+              <label className="mb-1 block text-xs font-medium text-slate-400">Description *</label>
+              <RichTextEditor
                 value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                maxLength={5000}
-                required
-                rows={5}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                ownerName={ownerName}
+                onChange={setEditDescription}
+                placeholder="Describe the project..."
+                minRows={5}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Status</label>
+                <label className="mb-1 block text-xs font-medium text-slate-400">Status</label>
                 <select
                   value={editStatus}
                   onChange={(e) => setEditStatus(e.target.value as ProjectStatus)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                  className="w-full rounded-lg border border-[var(--color-border-subtle)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
                 >
-                  {(FORWARD_STATUSES[project.status] ?? PROJECT_STATUS_VALUES).map((s) => (
+                  {(VALID_LIFECYCLE_TRANSITIONS[project.status] ?? PROJECT_STATUS_VALUES).map((s) => (
                     <option key={s} value={s}>
                       {s.charAt(0).toUpperCase() + s.slice(1)}
                     </option>
@@ -316,35 +358,61 @@ const ProjectDetailPage = () => {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Tags (comma-separated)</label>
+                <label className="mb-1 block text-xs font-medium text-slate-400">Tags (comma-separated)</label>
                 <input
                   type="text"
                   value={editTags}
                   onChange={(e) => setEditTags(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                  className="w-full rounded-lg border border-[var(--color-border-subtle)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Website</label>
+                <label className="mb-1 block text-xs font-medium text-slate-400">Category</label>
+                <input
+                  type="text"
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
+                  maxLength={50}
+                  className="w-full rounded-lg border border-[var(--color-border-subtle)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                  placeholder="Infrastructure"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-400">QDN URL</label>
+                <input
+                  type="text"
+                  value={editQdnUrl}
+                  onChange={(e) => setEditQdnUrl(e.target.value)}
+                  maxLength={500}
+                  className="w-full rounded-lg border border-[var(--color-border-subtle)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                  placeholder="qdn://DOCUMENT/Name/Identifier"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-400">Website</label>
                 <input
                   type="url"
                   value={editWebsite}
                   onChange={(e) => setEditWebsite(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                  className="w-full rounded-lg border border-[var(--color-border-subtle)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
                   placeholder="https://..."
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Repository</label>
+                <label className="mb-1 block text-xs font-medium text-slate-400">Repository</label>
                 <input
                   type="url"
                   value={editRepository}
                   onChange={(e) => setEditRepository(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                  className="w-full rounded-lg border border-[var(--color-border-subtle)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
                   placeholder="https://github.com/..."
                 />
               </div>
@@ -354,14 +422,14 @@ const ProjectDetailPage = () => {
               <button
                 type="submit"
                 disabled={isUpdating}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                className="rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
               >
                 {isUpdating ? 'Saving...' : 'Save Changes'}
               </button>
               <button
                 type="button"
                 onClick={cancelEditing}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800"
               >
                 Cancel
               </button>

@@ -17,17 +17,16 @@ import {
   getOwnerName,
 } from '../../services/qortium/qortiumClient';
 import { publishJsonResource } from '../../services/qortium/qdnService';
-import type { Post, Poll, Comment, PostWithComments, RoleRegistry } from '../../types';
-import { fetchRoleRegistry, publishRoleRegistry } from '../../services/qortium/rolesService';
+import type { Post, Poll, Comment, PostWithComments } from '../../types';
 import {
   fetchValidatedPosts,
   fetchValidatedComments,
   fetchValidatedTombstones,
   getTombstoneComposition,
+  buildPostPayload,
   buildCommentPayload,
   buildTombstonePayload,
-  fetchMediaReference,
-  toResolvedMediaView,
+  fetchContentImageRef,
 } from '../../services/qdn/runtime/qdnRuntimeService';
 import { buildQucpIdentifier } from '../../services/qdn/identifiers/qucpIdentifiers';
 import { buildOwnerTombstoneIdentifier } from '../../services/qdn/identifiers/operationIdentifiers';
@@ -45,7 +44,7 @@ const queryFn = async <T>(realFn: () => Promise<T>): Promise<{ data: T } | { err
 };
 
 /** Convert a validated QDN post envelope to the UI Post type. */
-function toPostView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number; updated?: number } }; entityId: string; publisherName: string; publisherAddress: string }): Post {
+export function toPostView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number; updated?: number } }; entityId: string; publisherName: string; publisherAddress: string }): Post {
   const d = env.envelope.data;
   const meta = env.envelope.metadata;
   return {
@@ -54,10 +53,9 @@ function toPostView(env: { envelope: { data: Record<string, unknown>; metadata: 
     content: (d.content as string) ?? '',
     authorName: env.publisherName,
     authorAddress: env.publisherAddress,
-    createdAt: meta.created ? new Date(meta.created).toISOString() : new Date().toISOString(),
+    createdAt: meta.created ? new Date(meta.created).toISOString() : null,
+    createdAtMs: meta.created ?? null,
     updatedAt: meta.updated ? new Date(meta.updated).toISOString() : null,
-    commentsCount: 0,
-    likesCount: 0,
     isPinned: false,
     tags: Array.isArray(d.tags) ? d.tags as string[] : [],
     coverMediaEntityId: (d.coverMediaEntityId as string) ?? undefined,
@@ -66,7 +64,7 @@ function toPostView(env: { envelope: { data: Record<string, unknown>; metadata: 
 }
 
 /** Convert a validated QDN comment envelope to the UI Comment type. */
-function toCommentView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number } }; entityId: string; publisherName: string; publisherAddress: string }): Comment {
+export function toCommentView(env: { envelope: { data: Record<string, unknown>; metadata: { name: string; created?: number } }; entityId: string; publisherName: string; publisherAddress: string }): Comment {
   const d = env.envelope.data;
   return {
     id: env.entityId,
@@ -76,7 +74,7 @@ function toCommentView(env: { envelope: { data: Record<string, unknown>; metadat
     content: (d.content as string) ?? '',
     createdAt: env.envelope.metadata.created
       ? new Date(env.envelope.metadata.created).toISOString()
-      : new Date().toISOString(),
+      : null,
     parentCommentId: null,
   };
 }
@@ -86,7 +84,7 @@ function toCommentView(env: { envelope: { data: Record<string, unknown>; metadat
 export const qortiumApi = createApi({
   reducerPath: 'qortiumApi',
   baseQuery: fakeBaseQuery<string>(),
-  tagTypes: ['Posts', 'Polls', 'Comments', 'SinglePost', 'RoleRegistry'],
+  tagTypes: ['Posts', 'Polls', 'Comments', 'SinglePost'],
   endpoints: (builder) => ({
 
     // ===== POSTS (migrated — validated runtime + tombstones + media resolution) =====
@@ -115,15 +113,16 @@ export const qortiumApi = createApi({
           const post = toPostView(p);
           if (isDeleted) continue;
 
-          // Resolve media reference through full validated chain
-          const coverMediaId = (p.envelope.data as Record<string, unknown>).coverMediaEntityId as string | undefined;
-          if (coverMediaId) {
-            const resolution = await fetchMediaReference(coverMediaId);
-            const view = toResolvedMediaView(resolution, isDeleted);
-            if (view.status === 'resolved') {
-              post.coverMediaUrl = `qdn://${view.service}/${view.publisherName}/${view.identifier}`;
-            }
-          }
+          // Resolve a render-safe image reference from inline rich content or
+          // from a legacy qucp-media-reference for older resources.
+          const postData = p.envelope.data as Record<string, unknown>;
+          post.coverImageRef =
+            (await fetchContentImageRef(
+              typeof postData.content === 'string' ? postData.content : '',
+              typeof postData.coverMediaEntityId === 'string'
+                ? postData.coverMediaEntityId
+                : undefined,
+            )) ?? undefined;
           posts.push(post);
         }
         return posts;
@@ -176,6 +175,15 @@ export const qortiumApi = createApi({
         if (!found) throw new Error(`Post ${postId} not found.`);
 
         const post = toPostView(found);
+
+        const postData = found.envelope.data as Record<string, unknown>;
+        post.coverImageRef =
+          (await fetchContentImageRef(
+            typeof postData.content === 'string' ? postData.content : '',
+            typeof postData.coverMediaEntityId === 'string'
+              ? postData.coverMediaEntityId
+              : undefined,
+          )) ?? undefined;
 
         // Fetch comments for this post from validated runtime
         const commentResult = await fetchValidatedComments();
@@ -277,47 +285,72 @@ export const qortiumApi = createApi({
       invalidatesTags: (_r, _e, { pollId }) => [{ type: 'Polls' }, { type: 'SinglePost', id: pollId }],
     }),
 
-    // ===== PUBLISH RESOURCE (migrated for posts, legacy for others) =====
-    publishResource: builder.mutation<
-      { success: boolean; resourceId: string },
-      { service: string; identifier: string; title: string; description: string; data: unknown; filename?: string }
+    // ===== PUBLISH POST (canonical schema + identifier + publication) =====
+    publishPost: builder.mutation<
+      { success: boolean },
+      {
+        entityId: string;
+        title: string;
+        content: string;
+        summary?: string;
+        tags?: string[];
+        coverMediaEntityId?: string;
+        ownerName: string;
+        ownerAddress: string;
+        createdAt?: number;
+      }
     >({
       queryFn: async (input) => {
         try {
-          await publishJsonResource({
-            service: input.service, identifier: input.identifier, payload: input.data,
-            title: input.title, description: input.description,
-            filename: input.filename || `${input.identifier}.json`,
+          if (!input.ownerName || !input.ownerAddress) {
+            throw new Error('Publisher identity is required to publish a post.');
+          }
+          const coverMediaEntityId = input.coverMediaEntityId;
+
+          const payload = buildPostPayload({
+            entityId: input.entityId,
+            title: input.title,
+            content: input.content,
+            summary: input.summary,
+            tags: input.tags,
+            ownerName: input.ownerName,
+            ownerAddress: input.ownerAddress,
+            coverMediaEntityId,
+            now: input.createdAt,
           });
-          return { data: { success: true, resourceId: `${input.identifier}-${Date.now()}` } };
+          const identifier = buildQucpIdentifier('qucp-post', input.entityId);
+          await publishJsonResource({
+            service: 'DOCUMENT',
+            identifier,
+            payload,
+            title: `Post: ${input.title}`,
+            description: input.summary ?? input.content.slice(0, 200),
+            filename: `${input.entityId}.json`,
+          });
+          return { data: { success: true } };
         } catch (err) {
-          return { error: err instanceof Error ? err.message : 'Failed to publish resource.' };
+          return { error: err instanceof Error ? err.message : 'Failed to publish post.' };
         }
       },
-      invalidatesTags: ['Posts', 'Polls'],
-    }),
-
-    // ===== ROLE REGISTRY (unchanged) =====
-    getRoleRegistry: builder.query<RoleRegistry, void>({
-      queryFn: () => queryFn(() => fetchRoleRegistry()),
-      providesTags: ['RoleRegistry'],
-    }),
-
-    updateRoleRegistry: builder.mutation<RoleRegistry, RoleRegistry>({
-      queryFn: async (input) => {
-        try {
-          return { data: await publishRoleRegistry(input) };
-        } catch (err) {
-          return { error: err instanceof Error ? err.message : 'Failed to update roles.' };
-        }
-      },
-      invalidatesTags: ['RoleRegistry'],
+      invalidatesTags: ['Posts', 'SinglePost'],
     }),
 
     // ===== DELETE POST (owner tombstone operation) =====
     deletePost: builder.mutation<void, { postId: string; ownerName: string; ownerAddress: string }>({
       queryFn: async (input) => {
         try {
+          if (!input.ownerAddress) {
+            throw new Error('Post owner identity is required to delete a post.');
+          }
+          const rawAccount = await requestQortium<unknown>({
+            action: 'GET_SELECTED_ACCOUNT',
+          });
+          const account = rawAccount as Record<string, unknown>;
+          const currentAddress = typeof account.address === 'string' ? account.address : '';
+          if (!currentAddress || currentAddress !== input.ownerAddress) {
+            throw new Error('You can only delete posts you published.');
+          }
+
           const tombstoneId = `ot-${input.postId}-${Date.now()}`;
           const identifier = await buildOwnerTombstoneIdentifier(
             'qucp-post', input.postId, input.ownerAddress,
@@ -349,6 +382,18 @@ export const qortiumApi = createApi({
     restorePost: builder.mutation<void, { postId: string; ownerName: string; ownerAddress: string }>({
       queryFn: async (input) => {
         try {
+          if (!input.ownerAddress) {
+            throw new Error('Post owner identity is required to restore a post.');
+          }
+          const rawAccount = await requestQortium<unknown>({
+            action: 'GET_SELECTED_ACCOUNT',
+          });
+          const account = rawAccount as Record<string, unknown>;
+          const currentAddress = typeof account.address === 'string' ? account.address : '';
+          if (!currentAddress || currentAddress !== input.ownerAddress) {
+            throw new Error('You can only restore posts you published.');
+          }
+
           const tombstoneId = `ot-${input.postId}-${Date.now()}`;
           const identifier = await buildOwnerTombstoneIdentifier(
             'qucp-post', input.postId, input.ownerAddress,
@@ -385,9 +430,7 @@ export const {
   useGetCommentsQuery,
   useAddCommentMutation,
   useVotePollMutation,
-  usePublishResourceMutation,
-  useGetRoleRegistryQuery,
-  useUpdateRoleRegistryMutation,
+  usePublishPostMutation,
   useDeletePostMutation,
   useRestorePostMutation,
 } = qortiumApi;

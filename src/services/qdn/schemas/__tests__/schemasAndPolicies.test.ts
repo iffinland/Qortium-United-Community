@@ -73,6 +73,8 @@ function validWikiData(overrides?: Partial<{ entityId: string; ownerName: string
     slug: overrides?.slug ?? 'test-wiki',
     content: 'Wiki content here.',
     categoryId: 'getting-started',
+    revision: 1,
+    status: 'active' as const,
   };
 }
 

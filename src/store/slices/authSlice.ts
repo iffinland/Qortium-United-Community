@@ -2,8 +2,8 @@
 
 import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
 import { getUserAccount, getAccountNames, getAccountBalance } from '../../services/qortium/walletService';
-import { fetchRoleRegistry, getUserRole } from '../../services/qortium/rolesService';
 import { isQortiumBridgeAvailable } from '../../services/qortium/qortiumClient';
+import { fetchAuthoritativeUserRole } from '../../services/auth/authorization';
 import type { UserRole } from '../../types';
 
 interface AuthState {
@@ -22,7 +22,7 @@ const initialState: AuthState = {
   address: null,
   name: null,
   names: [],
-  role: 'Member',
+  role: 'User',
   balance: null,
   isBridgeAvailable: false,
   isAuthenticated: false,
@@ -54,8 +54,7 @@ export const initializeAuth = createAsyncThunk(
       const names = account.address
         ? await getAccountNames(account.address)
         : [];
-      const registry = await fetchRoleRegistry();
-      const role = getUserRole(account.address, registry);
+      const role = await fetchAuthoritativeUserRole(account.address);
       const balance = account.address
         ? await getAccountBalance(account.address)
         : null;

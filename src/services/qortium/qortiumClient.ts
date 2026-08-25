@@ -7,8 +7,38 @@
 // Bridge detection uses only globalThis/window/parent/top — no undeclared
 // identifier evaluation that could throw ReferenceError outside Qortium Home.
 
+import { BridgeError } from '../qdn/qdnErrors';
+
 const BRIDGE_WAIT_MS = 4000;
 const BRIDGE_POLL_MS = 200;
+
+/**
+ * Action-appropriate request budgets.
+ *
+ * Reads are retryable evidence; a timeout means the answer is unavailable.
+ * Writes/publications are not blindly retried and a timeout means the outcome
+ * is ambiguous (accepted/unknown/unconfirmed), never a definite failure.
+ */
+export const READ_REQUEST_TIMEOUT_MS = 30_000;
+export const WRITE_REQUEST_TIMEOUT_MS = 60_000;
+
+const WRITE_ACTIONS = new Set<string>([
+  'PUBLISH_QDN_RESOURCE',
+  'PUBLISH_MULTIPLE_QDN_RESOURCES',
+  'DELETE_QDN_RESOURCE',
+  'SEND_COIN',
+  'SEND_CHAT_MESSAGE',
+  'JOIN_GROUP',
+  'LEAVE_GROUP',
+  'SET_GROUP_TITLE',
+  'VOTE_ON_POLL',
+  'CREATE_POLL',
+  'ADD_POLL_OPTION',
+]);
+
+function defaultTimeoutForAction(action: string): number {
+  return WRITE_ACTIONS.has(action) ? WRITE_REQUEST_TIMEOUT_MS : READ_REQUEST_TIMEOUT_MS;
+}
 
 const isBridgeRequestFunction = (
   value: unknown
@@ -57,6 +87,52 @@ const getRequestBridge = (): ((
 
 const sleep = (durationMs: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, durationMs));
+
+/** Options for a single Qortium bridge request. */
+export interface RequestQortiumOptions {
+  /** Per-request timeout in milliseconds. Overrides the action-class default. */
+  timeoutMs?: number;
+  /** AbortSignal for cancellation. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Bound a bridge promise without leaking timers or listeners.
+ *
+ * A timed-out bridge promise is intentionally not cancelled (JavaScript
+ * promises cannot be cancelled); the underlying work continues but its result
+ * is ignored, which is the correct semantic for an append-only publication.
+ */
+async function withRequestTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (timeoutMs <= 0) return promise;
+
+  if (signal?.aborted) throw BridgeError.cancelled();
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(BridgeError.timeout(timeoutMs)), timeoutMs);
+  });
+
+  const abortPromise = new Promise<never>((_, reject) => {
+    if (signal) {
+      onAbort = () => reject(BridgeError.cancelled());
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise, abortPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+  }
+}
 
 const waitForQortiumBridge = async () => {
   const immediate = getRequestBridge();
@@ -153,10 +229,16 @@ export const extractArray = <T>(
   return [];
 };
 
-// Cache for the current user's QDN name
-let cachedOwnerName: string | null = null;
-let ownerNameCachedAt = 0;
+// Cache for the current user's QDN name, keyed by the selected account address.
+// A global name cache would leak one account's publisher name into another
+// account after switching the selected account.
+const ownerNameCache = new Map<string, { name: string; cachedAt: number }>();
 const OWNER_NAME_TTL_MS = 5 * 60 * 1000;
+
+/** Invalidate the account-scoped publisher-name cache. */
+export const invalidateOwnerNameCache = (): void => {
+  ownerNameCache.clear();
+};
 
 /**
  * Get the current user's registered QDN name for publishing.
@@ -164,9 +246,6 @@ const OWNER_NAME_TTL_MS = 5 * 60 * 1000;
  */
 export const getOwnerName = async (): Promise<string> => {
   const now = Date.now();
-  if (cachedOwnerName && now - ownerNameCachedAt < OWNER_NAME_TTL_MS) {
-    return cachedOwnerName;
-  }
 
   // Get account address, then look up names
   const rawAccount = await requestQortium<unknown>({
@@ -174,6 +253,11 @@ export const getOwnerName = async (): Promise<string> => {
   });
   const account = parseQdnResponse(rawAccount) as Record<string, unknown> | null;
   const address = account && typeof account.address === 'string' ? account.address : '';
+
+  const cached = ownerNameCache.get(address);
+  if (cached && now - cached.cachedAt < OWNER_NAME_TTL_MS) {
+    return cached.name;
+  }
 
   if (address) {
     // Try GET_ACCOUNT_NAMES
@@ -198,10 +282,9 @@ export const getOwnerName = async (): Promise<string> => {
       }
 
       if (names.length > 0) {
-        cachedOwnerName = names[0];
-        ownerNameCachedAt = now;
-        console.log('[getOwnerName] Resolved:', cachedOwnerName);
-        return cachedOwnerName;
+        ownerNameCache.set(address, { name: names[0], cachedAt: now });
+        console.log('[getOwnerName] Resolved:', names[0]);
+        return names[0];
       }
     } catch (err) {
       console.warn('[getOwnerName] GET_ACCOUNT_NAMES failed:', err);
@@ -211,9 +294,8 @@ export const getOwnerName = async (): Promise<string> => {
 
   // Fallback: account object itself might have a name
   if (account && typeof account.name === 'string' && account.name.trim()) {
-    cachedOwnerName = account.name.trim();
-    ownerNameCachedAt = now;
-    return cachedOwnerName;
+    ownerNameCache.set(address, { name: account.name.trim(), cachedAt: now });
+    return account.name.trim();
   }
 
   throw new Error(
@@ -226,19 +308,23 @@ export const getOwnerName = async (): Promise<string> => {
  * Simplified pattern from qortium-blog: call bridge directly.
  */
 export const requestQortium = async <TResponse = unknown>(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  options?: RequestQortiumOptions,
 ): Promise<TResponse> => {
   const action = typeof payload.action === 'string' ? payload.action : 'UNKNOWN';
   const bridge = await waitForQortiumBridge();
 
   if (!bridge) {
-    throw new Error(
-      'QDN request bridge is not available. Open this app inside Qortium Home.'
-    );
+    throw BridgeError.bridgeUnavailable();
   }
 
   console.log(`[requestQortium] Calling ${action}...`);
-  const response = await bridge(payload);
+  const timeoutMs = options?.timeoutMs ?? defaultTimeoutForAction(action);
+  const response = await withRequestTimeout(
+    bridge(payload),
+    timeoutMs,
+    options?.signal,
+  );
   console.log(`[requestQortium] ${action} done, response type:`, typeof response);
   return response as TResponse;
 };

@@ -18,8 +18,9 @@
 
 import type { QdnResourceEnvelope } from '../QdnResourceEnvelope';
 import type { QucpRoleRegistrySnapshot } from '../schemas/roleRegistrySnapshotSchema';
-import { hasRole } from '../roles/roleAuthorization';
-import { QUC_SYSOP_ADDRESS } from '../../../config/qortiumTrust';
+import {
+  verifyAdminHistoricalAuthorization,
+} from '../roles/adminHistoricalAuthorization';
 import type { QdnDiagnostic } from '../diagnostics';
 
 // ---- Result Types ----
@@ -38,33 +39,6 @@ export type HistoricalAuthRejection =
   | 'published-after-role-revocation'
   | 'category-timestamp-missing'
   | 'empty-wallet';
-
-// ---- Snapshot Selection ----
-
-/**
- * Find the latest accepted role snapshot whose QDN creation time
- * is at or before the given category publication time.
- *
- * Snapshots must be sorted by QDN metadata created time (ascending).
- * Returns null if no snapshot is effective at the given time.
- */
-function findEffectiveRoleSnapshot(
-  categoryQdnCreatedTime: number,
-  sortedSnapshots: Array<{ envelope: QdnResourceEnvelope<QucpRoleRegistrySnapshot>; snapshotEntityId: string }>,
-): { envelope: QdnResourceEnvelope<QucpRoleRegistrySnapshot>; snapshotEntityId: string } | null {
-  let effective: { envelope: QdnResourceEnvelope<QucpRoleRegistrySnapshot>; snapshotEntityId: string } | null = null;
-
-  for (const snap of sortedSnapshots) {
-    const snapTime = snap.envelope.metadata.created ?? 0;
-    if (snapTime > 0 && snapTime <= categoryQdnCreatedTime) {
-      effective = snap;
-    } else if (snapTime > categoryQdnCreatedTime) {
-      break; // snapshots are sorted ascending
-    }
-  }
-
-  return effective;
-}
 
 // ---- Authorization Function ----
 
@@ -93,127 +67,32 @@ export interface HistoricalAuthInput {
 export function verifyCategoryHistoricalAuthorization(
   input: HistoricalAuthInput,
 ): HistoricalAuthResult {
-  const { publisherWallet, categoryQdnCreatedTime, roleSnapshots, roleHistoryComplete, roleLineageValid, roleLineageStatus } = input;
+  const result = verifyAdminHistoricalAuthorization({
+    publisherWallet: input.publisherWallet,
+    mutationQdnTime: input.categoryQdnCreatedTime,
+    roleSnapshots: input.roleSnapshots,
+    roleHistoryComplete: input.roleHistoryComplete,
+    roleLineageValid: input.roleLineageValid,
+    roleLineageStatus: input.roleLineageStatus,
+  });
 
-  if (!publisherWallet) {
-    return { authorized: false, reason: 'empty-wallet' };
+  if (result.authorized) {
+    return result;
   }
 
-  // SysOp trust anchor is always authorized — no role snapshot needed
-  if (publisherWallet === QUC_SYSOP_ADDRESS) {
-    return { authorized: true, source: 'sysop-trust-anchor' };
-  }
-
-  // Role history incomplete or lineage invalid → conservative: reject
-  if (!roleLineageValid) {
-    return {
-      authorized: false,
-      reason: 'role-snapshot-lineage-invalid',
-      detail: roleLineageStatus ?? 'Role snapshot lineage could not be resolved',
-    };
-  }
-
-  if (!roleHistoryComplete) {
-    return {
-      authorized: false,
-      reason: 'role-history-incomplete',
-      detail: 'Role history discovery is incomplete — cannot verify historical authorization',
-    };
-  }
-
-  // No snapshots available
-  if (roleSnapshots.length === 0) {
-    return {
-      authorized: false,
-      reason: 'role-history-unavailable',
-      detail: 'No accepted role snapshots found',
-    };
-  }
-
-  // Category must have a trusted publication timestamp
-  if (categoryQdnCreatedTime === undefined || categoryQdnCreatedTime <= 0) {
+  // Keep the category-specific reason vocabulary for backward compatibility.
+  if (result.reason === 'mutation-timestamp-missing') {
     return {
       authorized: false,
       reason: 'category-timestamp-missing',
-      detail: 'Category has no trusted QDN publication timestamp',
+      detail: result.detail,
     };
   }
 
-  // Sort snapshots by QDN created time (ascending)
-  const sortedSnapshots = [...roleSnapshots].sort((a, b) =>
-    (a.envelope.metadata.created ?? 0) - (b.envelope.metadata.created ?? 0),
-  );
-
-  // Find the latest snapshot effective at or before the category publication time
-  const effectiveSnapshot = findEffectiveRoleSnapshot(categoryQdnCreatedTime, sortedSnapshots);
-
-  if (!effectiveSnapshot) {
-    // No snapshot exists at or before category publication time
-    return {
-      authorized: false,
-      reason: 'published-before-role-grant',
-      detail: `Category published at ${categoryQdnCreatedTime} but no role snapshot exists at or before that time`,
-    };
-  }
-
-  // Check if publisher had admin role in the effective snapshot
-  if (hasRole(publisherWallet, 'admin', effectiveSnapshot.envelope.data)) {
-    return {
-      authorized: true,
-      source: 'admin-at-publication',
-      snapshotEntityId: effectiveSnapshot.snapshotEntityId,
-    };
-  }
-
-  // Check if publisher had admin role in any later snapshot
-  // (this means they were granted admin after publication → still unauthorized)
-  const laterSnapshots = sortedSnapshots.filter(
-    s => (s.envelope.metadata.created ?? 0) > categoryQdnCreatedTime,
-  );
-
-  let grantedLater = false;
-  for (const s of laterSnapshots) {
-    if (hasRole(publisherWallet, 'admin', s.envelope.data)) {
-      grantedLater = true;
-      break;
-    }
-  }
-
-  if (grantedLater) {
-    return {
-      authorized: false,
-      reason: 'published-before-role-grant',
-      detail: `Category published at ${categoryQdnCreatedTime} but publisher was granted admin role only after publication`,
-    };
-  }
-
-  // Check if publisher had admin in an earlier snapshot but was revoked
-  const earlierSnapshots = sortedSnapshots.filter(
-    s => (s.envelope.metadata.created ?? 0) <= categoryQdnCreatedTime,
-  );
-
-  let hadAdminEarlier = false;
-  for (const s of earlierSnapshots) {
-    if (hasRole(publisherWallet, 'admin', s.envelope.data)) {
-      hadAdminEarlier = true;
-      break;
-    }
-  }
-
-  if (hadAdminEarlier) {
-    // They had admin earlier but not in the effective snapshot
-    return {
-      authorized: false,
-      reason: 'published-after-role-revocation',
-      detail: `Category published at ${categoryQdnCreatedTime} but publisher's admin role was revoked before publication`,
-    };
-  }
-
-  // Never had admin role
   return {
     authorized: false,
-    reason: 'not-admin-nor-sysop-at-publication',
-    detail: `Publisher wallet ${publisherWallet.slice(0, 10)}... did not hold admin role at publication time ${categoryQdnCreatedTime}`,
+    reason: result.reason as HistoricalAuthRejection,
+    detail: result.detail,
   };
 }
 

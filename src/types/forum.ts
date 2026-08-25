@@ -17,8 +17,8 @@ export interface ForumThread {
   content: string;
   authorName: string;
   authorAddress: string;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string | null;
+  updatedAt?: string | null;
   tags?: string[];
 }
 
@@ -28,7 +28,7 @@ export interface ThreadReply {
   authorName: string;
   authorAddress: string;
   content: string;
-  createdAt: string;
+  createdAt: string | null;
   parentReplyId: string | null;
 }
 

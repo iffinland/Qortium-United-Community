@@ -22,10 +22,10 @@ import { buildFundTransactionsCsv } from '../services/fund/fundRuntime';
 import type { FundTransaction, FundCompleteness } from '../services/fund/fundRuntime';
 
 const DIRECTION_CONFIG = {
-  incoming: { label: 'Incoming transfer', icon: ArrowDownLeft, color: 'text-emerald-600', iconBg: 'text-emerald-400', prefix: '+' },
-  outgoing: { label: 'Outgoing transfer', icon: ArrowUpRight, color: 'text-rose-600', iconBg: 'text-rose-400', prefix: '-' },
-  self: { label: 'Self-transfer', icon: ArrowUpRight, color: 'text-slate-500', iconBg: 'text-slate-400', prefix: '±' },
-  unknown: { label: 'Wallet transaction', icon: ExternalLink, color: 'text-slate-500', iconBg: 'text-slate-400', prefix: '' },
+  incoming: { label: 'Incoming transfer', icon: ArrowDownLeft, color: 'text-emerald-400', iconBg: 'text-emerald-400', prefix: '+' },
+  outgoing: { label: 'Outgoing transfer', icon: ArrowUpRight, color: 'text-rose-400', iconBg: 'text-rose-400', prefix: '-' },
+  self: { label: 'Self-transfer', icon: ArrowUpRight, color: 'text-slate-400', iconBg: 'text-slate-400', prefix: '±' },
+  unknown: { label: 'Wallet transaction', icon: ExternalLink, color: 'text-slate-400', iconBg: 'text-slate-400', prefix: '' },
 } as const;
 
 const COMPLETENESS_LABELS: Record<FundCompleteness, string> = {
@@ -66,8 +66,8 @@ const DonationsPage = () => {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="animate-pulse rounded-xl bg-slate-200 h-32" />
-        <div className="animate-pulse rounded-xl bg-slate-200 h-64" />
+        <div className="animate-pulse rounded-xl bg-[var(--color-surface-muted)] h-32" />
+        <div className="animate-pulse rounded-xl bg-[var(--color-surface-muted)] h-64" />
       </div>
     );
   }
@@ -75,9 +75,9 @@ const DonationsPage = () => {
   // ---- Render: Config error ----
   if (fundConfig.status !== 'valid') {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+      <div className="rounded-xl border border-red-800 bg-red-950 p-6 text-center">
         <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-red-400" />
-        <p className="text-red-700">Fund wallet configuration is invalid.</p>
+        <p className="text-red-400">Fund wallet configuration is invalid.</p>
       </div>
     );
   }
@@ -85,9 +85,9 @@ const DonationsPage = () => {
   // ---- Render: Error ----
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+      <div className="rounded-xl border border-red-800 bg-red-950 p-6 text-center">
         <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-red-400" />
-        <p className="text-red-700">{typeof error === 'string' ? error : 'Failed to load fund data.'}</p>
+        <p className="text-red-400">{typeof error === 'string' ? error : 'Failed to load fund data.'}</p>
       </div>
     );
   }
@@ -107,7 +107,7 @@ const DonationsPage = () => {
       </div>
 
       {/* Balance card */}
-      <div className="rounded-xl bg-gradient-to-br from-cyan-600 to-blue-700 p-6 text-white shadow-lg">
+      <div className="rounded-xl bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-hover)] p-6 text-white shadow-lg">
         <div className="mb-1 flex items-center gap-2">
           <Coins className="h-5 w-5 text-amber-300" />
           <p className="text-sm font-medium uppercase tracking-wider text-cyan-100">Fund Wallet Balance</p>
@@ -135,7 +135,7 @@ const DonationsPage = () => {
           </div>
           <button
             onClick={handleCopy}
-            className="shrink-0 rounded-lg border border-slate-200 p-2 text-[var(--color-text-muted)] transition hover:border-cyan-300 hover:text-cyan-600"
+            className="shrink-0 rounded-lg border border-[var(--color-border-subtle)] p-2 text-[var(--color-text-muted)] transition hover:border-cyan-300 hover:text-cyan-600"
           >
             {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
           </button>
@@ -174,20 +174,20 @@ const DonationsPage = () => {
 
         {/* Completeness banner */}
         {txCompleteness === 'incomplete' && (
-          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+          <div className="mb-3 rounded-lg border border-amber-800 bg-amber-950 px-4 py-2 text-sm text-amber-400">
             <AlertTriangle className="mr-1.5 inline h-4 w-4" />
             {COMPLETENESS_LABELS.incomplete}
           </div>
         )}
         {txCompleteness === 'unavailable' && (
-          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <div className="mb-3 rounded-lg border border-red-800 bg-red-950 px-4 py-2 text-sm text-red-400">
             <AlertTriangle className="mr-1.5 inline h-4 w-4" />
             {COMPLETENESS_LABELS.unavailable}
           </div>
         )}
 
         {transactions.length === 0 ? (
-          <div className="rounded-xl bg-white p-8 text-center shadow-sm">
+          <div className="rounded-xl bg-[var(--color-surface)] p-8 text-center shadow-sm">
             <p className="text-[var(--color-text-muted)]">
               {txCompleteness === 'empty' ? COMPLETENESS_LABELS.empty
                 : txCompleteness === 'unavailable' ? COMPLETENESS_LABELS.unavailable

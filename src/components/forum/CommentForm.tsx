@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { Send, X } from 'lucide-react';
 import { useAddCommentMutation } from '../../store/api/qortiumApi';
 import { useAppSelector } from '../../store';
+import { RichTextEditor } from '../editor/RichTextEditor';
 
 interface CommentFormProps {
   postId: string;
@@ -58,29 +59,25 @@ const CommentForm = ({
           <button
             type="button"
             onClick={onCancelReply}
-            className="rounded p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="rounded p-0.5 hover:bg-slate-800"
           >
             <X className="h-3 w-3" />
           </button>
         </div>
       )}
-      <div className="relative">
-        <textarea
+      <div className="space-y-2">
+        <RichTextEditor
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder={
-            isAuthenticated
-              ? 'Write a comment...'
-              : 'Sign in to comment...'
-          }
+          onChange={setContent}
+          ownerName={name || ''}
+          placeholder={isAuthenticated ? 'Write a comment...' : 'Sign in to comment...'}
           disabled={!isAuthenticated || isSubmitting}
-          rows={3}
-          className="w-full resize-none rounded-lg border border-slate-200 bg-white p-3 pr-12 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] transition focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+          minRows={3}
         />
         <button
           type="submit"
           disabled={!content.trim() || !isAuthenticated || isSubmitting}
-          className="absolute bottom-3 right-3 rounded-md p-1.5 text-cyan-500 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:cursor-not-allowed disabled:opacity-30"
+          className="rounded-md p-1.5 text-cyan-500 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:cursor-not-allowed disabled:opacity-30"
           title="Send comment"
         >
           <Send className="h-4 w-4" />

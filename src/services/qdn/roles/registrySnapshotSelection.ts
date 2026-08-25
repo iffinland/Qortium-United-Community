@@ -5,8 +5,7 @@
 
 import type { QdnResourceEnvelope } from '../QdnResourceEnvelope';
 import type { QucpRoleRegistrySnapshot } from '../schemas/roleRegistrySnapshotSchema';
-import { compareByQdnMetadata } from '../ordering/authoritativeEntityOrdering';
-import { detectForks, findLineageHead } from './registryLineage';
+import { validateRoleLineage, describeRoleLineage } from './registryLineage';
 
 // ---- Accepted Snapshot Wrapper ----
 
@@ -55,12 +54,11 @@ export function selectCurrentSnapshot(
     return { status: 'unavailable', reason: 'No accepted role snapshots found' };
   }
 
-  // Sort by QDN metadata: newest first
-  const sorted = [...acceptedEnvelopes].sort((a, b) => compareByQdnMetadata(a, b));
-  const sortedIds = sorted.map((e) => e.data.snapshotId);
-
   // Build snapshot map
-  const snapshotMap = new Map<string, { snapshot: QucpRoleRegistrySnapshot; identifier: string }>();
+  const snapshotMap = new Map<
+    string,
+    { snapshot: QucpRoleRegistrySnapshot; identifier: string }
+  >();
   for (const env of acceptedEnvelopes) {
     snapshotMap.set(env.data.snapshotId, {
       snapshot: env.data,
@@ -68,28 +66,18 @@ export function selectCurrentSnapshot(
     });
   }
 
-  // Check for forks
-  const forks = detectForks(snapshotMap);
-  if (forks.size > 0) {
-    const forkParents = [...forks.keys()].join(', ');
+  // Canonical lineage validation: exactly one genesis, no missing predecessor,
+  // no cycles, no forks, and one unambiguous head.
+  const lineage = validateRoleLineage(snapshotMap);
+  if (!lineage.valid) {
     return {
       status: 'history-unresolved',
-      reason: `Forked snapshot history detected at parent(s): ${forkParents}`,
-    };
-  }
-
-  // Find the latest lineage head
-  const head = findLineageHead(snapshotMap, sortedIds);
-
-  if (!head) {
-    return {
-      status: 'history-unresolved',
-      reason: 'No valid lineage head found — missing genesis or cycle detected',
+      reason: describeRoleLineage(lineage),
     };
   }
 
   // Find the envelope for the head
-  const headEnv = acceptedEnvelopes.find((e) => e.data.snapshotId === head);
+  const headEnv = acceptedEnvelopes.find((e) => e.data.snapshotId === lineage.head);
   if (!headEnv) {
     return { status: 'unavailable', reason: 'Lineage head envelope not found' };
   }

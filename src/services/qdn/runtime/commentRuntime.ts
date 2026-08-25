@@ -76,7 +76,7 @@ function parseCommentPayload(raw: unknown): QucpPostComment | null {
   if (!raw || typeof raw !== 'object') return null;
   const d = raw as Record<string, unknown>;
   if (typeof d.entityId !== 'string') return null;
-  if (typeof d.parentPostEntityId !== 'string') return null;
+  if (typeof d.parentEntityId !== 'string') return null;
   if (typeof d.content !== 'string') return null;
   if (d.resourceFamily !== 'qucp-post-comment') return null;
   return d as QucpPostComment;

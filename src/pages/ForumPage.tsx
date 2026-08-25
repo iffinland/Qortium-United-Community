@@ -12,8 +12,8 @@ const ForumPage = () => {
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
           <div key={i} className="animate-pulse rounded-xl bg-[var(--color-surface-card)] p-5 shadow-sm">
-            <div className="mb-2 h-5 w-40 rounded bg-slate-200" />
-            <div className="h-4 w-60 rounded bg-slate-100" />
+            <div className="mb-2 h-5 w-40 rounded bg-[var(--color-surface-muted)]" />
+            <div className="h-4 w-60 rounded bg-[var(--color-surface-muted)]" />
           </div>
         ))}
       </div>
@@ -37,7 +37,7 @@ const ForumPage = () => {
             className="group rounded-xl bg-[var(--color-surface-card)] p-5 shadow-sm transition hover:shadow-md hover:-translate-y-0.5"
           >
             <div className="mb-3 flex items-start gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xl dark:bg-slate-800">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-muted)] text-xl">
                 {cat.icon}
               </span>
               <div className="min-w-0 flex-1">

@@ -43,6 +43,7 @@ const validWiki = () => ({
   ownerAddress: 'QWifxJWGbJZ6Yo6kiimFkBGcm4AxQefdUm',
   createdAt: 1700000000000, title: 'Wiki', slug: 'my-wiki',
   content: 'Content.', categoryId: 'general',
+  revision: 1, status: 'active' as const,
 });
 
 const validForum = () => ({

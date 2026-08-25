@@ -4,8 +4,6 @@
 // They are NOT production data — purely test artifacts.
 // Placed under src/test/fixtures/ following project convention.
 
-import type { RoleRegistry, UserRole } from '../../types';
-
 // ---- Resource Metadata (search result shapes) ----
 
 export interface QdnSearchResult {
@@ -121,26 +119,6 @@ export const validPostSchema = {
   status: 'active' as const,
 };
 
-// ---- Role Registry Fixtures ----
-
-export const trustedSysOpRegistry: RoleRegistry = {
-  primarySysOpAddress: 'QWifxJWGbJZ6Yo6kiimFkBGcm4AxQefdUm',
-  sysOps: [],
-  admins: ['QN3XYzAbCdEfGhIjKlMnOpQrStUvWxYz'],
-  moderators: ['QN7ModSquadLeaderXyzAbc123'],
-  creators: ['QN2ABcdEfghIjklMnOpQrStUvWxYz1234'],
-  updatedAt: 1753444800000,
-};
-
-export const untrustedRoleRegistry: RoleRegistry = {
-  primarySysOpAddress: 'QMalloryMalloryMalloryMalloryMallory',
-  sysOps: ['QMalloryMalloryMalloryMalloryMallory'],
-  admins: ['QAttackerAttackerAttackerAttackerA'],
-  moderators: [],
-  creators: [],
-  updatedAt: 9999999999999,
-};
-
 // ---- Entity Update Fixtures ----
 
 export const ownerAuthoredUpdate = {
@@ -215,15 +193,4 @@ export const bridgeUnavailableScenarios = {
     },
     expectedBehavior: 'Catches cross-origin error, continues to check other sources',
   },
-};
-
-// ---- User Role Fixtures ----
-
-export const roleTestAddresses: Record<UserRole, string> = {
-  SysOp: 'QWifxJWGbJZ6Yo6kiimFkBGcm4AxQefdUm',
-  SuperAdmin: 'QWifxJWGbJZ6Yo6kiimFkBGcm4AxQefdUm',
-  Admin: 'QN3XYzAbCdEfGhIjKlMnOpQrStUvWxYz',
-  Moderator: 'QN7ModSquadLeaderXyzAbc123',
-  Creator: 'QN2ABcdEfghIjklMnOpQrStUvWxYz1234',
-  Member: 'QUnknownUnknownUnknownUnknownUnkn',
 };

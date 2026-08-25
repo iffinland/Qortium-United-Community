@@ -3,7 +3,7 @@
 // qucp-wiki: community knowledge base articles.
 //
 // Immutable: schemaVersion, resourceFamily, entityId, ownerName, ownerAddress, createdAt
-// Mutable: title, slug, content, summary, categoryId, tags
+// Mutable: title, slug, content, summary, categoryId, tags, revision, status
 // Note: slug is a display/routing field — NOT the authoritative entity identity.
 
 import { z } from 'zod';
@@ -18,6 +18,9 @@ import {
   SCHEMA_VERSION,
 } from './commonSchemas';
 
+const revisionField = z.number().int().min(1);
+const statusField = z.enum(['active', 'archived']);
+
 export const wikiArticleSchema = authoritativeEntityBase.extend({
   resourceFamily: z.literal('qucp-wiki'),
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -28,6 +31,8 @@ export const wikiArticleSchema = authoritativeEntityBase.extend({
   summary: summaryField,
   categoryId: categoryIdField,
   tags: tagsField,
+  revision: revisionField,
+  status: statusField,
 }).strict();
 
 export type QucpWikiArticle = z.infer<typeof wikiArticleSchema>;

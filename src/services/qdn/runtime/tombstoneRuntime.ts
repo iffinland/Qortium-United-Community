@@ -8,9 +8,17 @@ import type { QdnResourceEnvelope } from '../QdnResourceEnvelope';
 import type { QdnSearchFn } from '../paginatedQdnSearch';
 import type { QdnFetchFn } from '../fetchQdnResources';
 import type { IdentityResolver } from '../IdentityResolver';
-import { validatedRuntimeQuery } from './validatedQueryRuntime';
+import { paginatedQdnSearch } from '../paginatedQdnSearch';
+import { boundedFetchResources } from '../fetchQdnResources';
+import { validateResource } from '../validationPipeline';
 import { ownerTombstonePolicy } from '../policies/ownerTombstonePolicy';
-import type { ValidatedRuntimeQueryResult, ValidatedResource } from './runtimeTypes';
+import {
+  classifyRuntimeQuery,
+  type ValidatedRuntimeQueryResult,
+  type ValidatedResource,
+  type RuntimeDiagnostic,
+} from './runtimeTypes';
+import { ValidationReasonCodes } from '../validationTypes';
 import {
   reduceOwnerTombstones,
   type EffectiveTombstone,
@@ -59,17 +67,139 @@ export async function queryTombstones(
   fetchFn: QdnFetchFn,
   identityResolver: IdentityResolver,
 ): Promise<TombstoneQueryResult> {
-  return validatedRuntimeQuery<QucpOwnerTombstone>(
-    searchFn,
+  const diagnostics: RuntimeDiagnostic[] = [];
+
+  const searchResult = await paginatedQdnSearch(searchFn, {
+    service: 'DOCUMENT',
+    identifier: TOMBSTONE_SEARCH_PREFIX,
+    prefix: true,
+    pageSize: 50,
+    safetyMax: 500,
+    reverse: true,
+    includeMetadata: true,
+  });
+
+  if (
+    searchResult.reason === 'request-failed' ||
+    searchResult.reason === 'invalid-response' ||
+    searchResult.reason === 'timeout'
+  ) {
+    diagnostics.push({
+      level: 'error',
+      code: 'TOMBSTONE_SEARCH_FAILED',
+      message: `Tombstone search failed: ${searchResult.reason}`,
+    });
+    return {
+      status: 'unavailable',
+      items: [],
+      reason: `Tombstone search failed: ${searchResult.reason}`,
+      diagnostics,
+    };
+  }
+
+  if (searchResult.items.length === 0) {
+    if (searchResult.complete) {
+      return { status: 'empty', items: [], diagnostics: [] };
+    }
+    return {
+      status: 'incomplete',
+      items: [],
+      rejectedCount: 0,
+      quarantinedCount: 0,
+      reason: searchResult.reason ?? 'Incomplete tombstone discovery',
+      diagnostics: searchResult.diagnostics.map((d) => ({
+        level: d.level,
+        code: d.code,
+        message: d.message,
+      })),
+    };
+  }
+
+  for (const d of searchResult.diagnostics) {
+    diagnostics.push({
+      level: d.level,
+      code: d.code,
+      message: d.message,
+      entityId: d.identifier,
+      publisherName: d.name,
+    });
+  }
+
+  const fetchResult = await boundedFetchResources<QucpOwnerTombstone>(
     fetchFn,
     parseTombstonePayload,
-    ownerTombstonePolicy,
-    identityResolver,
-    {
-      service: 'DOCUMENT',
-      identifierPrefix: TOMBSTONE_SEARCH_PREFIX,
-    },
+    searchResult.items,
   );
+
+  for (const d of fetchResult.diagnostics) {
+    diagnostics.push({
+      level: d.level,
+      code: d.code,
+      message: d.message,
+      entityId: d.identifier,
+      publisherName: d.name,
+    });
+  }
+
+  const items: ValidatedResource<QucpOwnerTombstone>[] = [];
+  let rejectedCount = 0;
+  let quarantinedCount = 0;
+  let identityLookupFailedCount = 0;
+
+  for (const envelope of fetchResult.items) {
+    const result = await validateResource(envelope, ownerTombstonePolicy, identityResolver);
+
+    if (result.status === 'accepted') {
+      items.push({
+        envelope: result.envelope,
+        // Tombstones are keyed by operationId, not the generic entityId.
+        entityId: result.envelope.data.operationId,
+        publisherName: result.envelope.metadata.name,
+        publisherAddress:
+          result.envelope.resolvedPublisherAddress ??
+          result.envelope.data.ownerAddress,
+      });
+      continue;
+    }
+
+    if (result.status === 'rejected') {
+      rejectedCount++;
+    } else {
+      quarantinedCount++;
+      if (result.reason === ValidationReasonCodes.PUBLISHER_LOOKUP_FAILED) {
+        identityLookupFailedCount++;
+      }
+    }
+
+    for (const d of result.diagnostics) {
+      diagnostics.push({
+        level: d.level,
+        code: d.code,
+        message: d.message,
+        entityId: d.identifier,
+        publisherName: d.name,
+      });
+    }
+  }
+
+  const searchComplete = searchResult.complete;
+  const fetchComplete = fetchResult.complete;
+  const allFetchesFailed =
+    searchResult.items.length > 0 &&
+    fetchResult.items.length === 0 &&
+    !fetchComplete;
+
+  return classifyRuntimeQuery({
+    items,
+    rejectedCount,
+    quarantinedCount,
+    identityLookupFailedCount,
+    searchComplete,
+    searchReason: searchResult.reason,
+    fetchComplete,
+    allFetchesFailed,
+    diagnostics,
+  });
 }
 
 // ---- Reduction Helpers ----

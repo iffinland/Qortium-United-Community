@@ -7,8 +7,11 @@ import { useGetCategoriesQuery, useGetThreadsQuery } from '../store/api/forumApi
 import type { ForumThread } from '../types/forum';
 import NewThreadForm from '../components/forum/NewThreadForm';
 
-const timeAgo = (d: string) => {
-  const diff = Date.now() - new Date(d).getTime();
+const timeAgo = (d: string | null) => {
+  if (!d) return 'Unknown';
+  const parsed = new Date(d);
+  if (Number.isNaN(parsed.getTime())) return 'Unknown';
+  const diff = Date.now() - parsed.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m`;
   const hrs = Math.floor(mins / 60);
@@ -31,7 +34,7 @@ const ForumCategoryPage = () => {
       <div className="space-y-2">
         {[1, 2, 3].map((i) => (
           <div key={i} className="animate-pulse rounded-lg bg-[var(--color-surface-card)] p-4">
-            <div className="h-4 w-2/3 rounded bg-slate-200" />
+            <div className="h-4 w-2/3 rounded bg-[var(--color-surface-muted)]" />
           </div>
         ))}
       </div>
@@ -58,7 +61,7 @@ const ForumCategoryPage = () => {
         </div>
         <button
           onClick={() => setShowNewThread(!showNewThread)}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-700"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--color-accent-hover)]"
         >
           <Plus className="h-4 w-4" />
           New Thread
@@ -75,7 +78,7 @@ const ForumCategoryPage = () => {
 
       {/* Incomplete notice */}
       {completeness === 'incomplete' && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+        <div className="rounded-lg border border-amber-800 bg-amber-950 p-3 text-sm text-amber-400">
           Some Forum resources could not be loaded. The visible results may be incomplete.
         </div>
       )}
@@ -99,7 +102,7 @@ const ThreadRow = ({ thread }: { thread: ForumThread }) => (
     to={`/forum/${thread.categoryId}/${thread.id}`}
     className="flex items-center gap-3 rounded-lg p-3 transition hover:bg-[var(--color-surface-card)] hover:shadow-sm"
   >
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-[10px] font-bold text-white">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-[var(--color-accent)] text-[10px] font-bold text-white">
       {thread.authorName.slice(0, 2).toUpperCase()}
     </div>
     <div className="min-w-0 flex-1">
@@ -108,13 +111,13 @@ const ThreadRow = ({ thread }: { thread: ForumThread }) => (
           {thread.title}
         </p>
         {thread.tags?.map((t: string) => (
-          <span key={t} className="hidden rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)] sm:inline dark:bg-slate-800">
+          <span key={t} className="hidden rounded-full bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)] sm:inline">
             {t}
           </span>
         ))}
       </div>
       <p className="text-xs text-[var(--color-text-muted)]">
-        by {thread.authorName} · {timeAgo(thread.createdAt)} ago
+        by {thread.authorName} · {timeAgo(thread.createdAt) === 'Unknown' ? 'time unknown' : `${timeAgo(thread.createdAt)} ago`}
       </p>
     </div>
   </Link>

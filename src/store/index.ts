@@ -10,6 +10,8 @@ import { supportApi } from './api/supportApi';
 import { wikiApi } from './api/wikiApi';
 import { pollApi } from './api/pollApi';
 import { projectApi } from './api/projectApi';
+import { roleApi } from './api/roleApi';
+import { eventApi } from './api/eventApi';
 
 export const store = configureStore({
   reducer: {
@@ -21,6 +23,8 @@ export const store = configureStore({
     [wikiApi.reducerPath]: wikiApi.reducer,
     [pollApi.reducerPath]: pollApi.reducer,
     [projectApi.reducerPath]: projectApi.reducer,
+    [roleApi.reducerPath]: roleApi.reducer,
+    [eventApi.reducerPath]: eventApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
@@ -30,6 +34,8 @@ export const store = configureStore({
       wikiApi.middleware,
       pollApi.middleware,
       projectApi.middleware,
+      roleApi.middleware,
+      eventApi.middleware,
       fundApi.middleware,
     ),
   devTools: import.meta.env.DEV,

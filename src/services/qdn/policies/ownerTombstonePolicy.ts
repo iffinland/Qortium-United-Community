@@ -2,7 +2,7 @@
 
 import type { ResourcePolicy } from '../ResourcePolicy';
 import { ownerTombstoneSchema, type QucpOwnerTombstone } from '../schemas/ownerTombstoneSchema';
-import { parseWithZod, validateFamilyIdentifier } from './authoritativeEntityPolicy';
+import { parseWithZod } from './authoritativeEntityPolicy';
 import { parseOwnerTombstoneIdentifier } from '../identifiers/operationIdentifiers';
 import { verifyTombstoneOwnerKey, verifyTombstoneTargetKey } from '../identifiers/operationKeys';
 import { ValidationReasonCodes } from '../validationTypes';
@@ -16,7 +16,24 @@ export const ownerTombstonePolicy: ResourcePolicy<QucpOwnerTombstone> = {
   },
 
   validateIdentifier(identifier: string) {
-    return validateFamilyIdentifier(identifier, 'qucp-owner-tombstone');
+    // Owner tombstones are operation resources, not authoritative entities.
+    // They use the dedicated qucp-ot-{targetKey}-{ownerKey} identifier shape
+    // rather than qucp-owner-tombstone-{entityId}.
+    const parsed = parseOwnerTombstoneIdentifier(identifier);
+    if (!parsed) {
+      return {
+        valid: false,
+        reason: ValidationReasonCodes.IDENTIFIER_INVALID,
+        diagnostics: [
+          warningDiag(
+            ValidationReasonCodes.IDENTIFIER_INVALID,
+            `Owner tombstone identifier must match qucp-ot-{26hex}-{26hex}, got: ${identifier}`,
+            { identifier },
+          ),
+        ],
+      };
+    }
+    return { valid: true };
   },
 
   extractEmbeddedIdentity(envelope) {

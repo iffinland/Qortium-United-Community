@@ -23,13 +23,172 @@ export interface LineageResult {
 
 // ---- Snapshot Map ----
 
-interface SnapshotEntry {
+export interface SnapshotEntry {
   snapshot: QucpRoleRegistrySnapshot;
   identifier: string;
 }
 
+// ---- Canonical Lineage Validation ----
+
+/**
+ * Failure modes for the single canonical role-lineage validator.
+ *
+ * A valid canonical lineage must have exactly one genesis, every successor must
+ * reference an existing predecessor, and there must be no cycles, forks, or
+ * ambiguous heads. Discovery completeness/unavailability is handled by the
+ * caller because the validator operates on already-loaded snapshots.
+ */
+export type RoleLineageRejection =
+  | 'empty'
+  | 'multiple-genesis'
+  | 'missing-previous'
+  | 'cycle'
+  | 'fork'
+  | 'ambiguous-head';
+
+export type RoleLineageValidation =
+  | { valid: true; head: string }
+  | { valid: false; reason: RoleLineageRejection; detail?: string };
+
+/**
+ * Validate a complete set of accepted role snapshots as one canonical lineage.
+ *
+ * This is the single authority-critical lineage interpretation. It does not
+ * select the deepest/newest root, treat a missing predecessor as a genesis, or
+ * tolerate competing children. It either returns the one unambiguous current
+ * head or fails closed with a specific reason.
+ */
+export function validateRoleLineage(
+  snapshotMap: ReadonlyMap<string, SnapshotEntry>,
+): RoleLineageValidation {
+  if (snapshotMap.size === 0) {
+    return { valid: false, reason: 'empty', detail: 'No role snapshots loaded' };
+  }
+
+  const genesisIds: string[] = [];
+  const childrenByParent = new Map<string, string[]>();
+
+  // 1. Classify genesis snapshots and verify every predecessor exists.
+  for (const [id, entry] of snapshotMap) {
+    const prev = entry.snapshot.previousSnapshotId;
+    if (!prev) {
+      genesisIds.push(id);
+      continue;
+    }
+    if (prev === id) {
+      return { valid: false, reason: 'cycle', detail: `Snapshot ${id} references itself` };
+    }
+    if (!snapshotMap.has(prev)) {
+      return {
+        valid: false,
+        reason: 'missing-previous',
+        detail: `Snapshot ${id} references missing predecessor ${prev}`,
+      };
+    }
+    const kids = childrenByParent.get(prev) ?? [];
+    kids.push(id);
+    childrenByParent.set(prev, kids);
+  }
+
+  // 2. Exactly one genesis.
+  if (genesisIds.length === 0) {
+    return {
+      valid: false,
+      reason: 'cycle',
+      detail: 'No genesis snapshot found — the lineage forms a closed cycle',
+    };
+  }
+  if (genesisIds.length > 1) {
+    return {
+      valid: false,
+      reason: 'multiple-genesis',
+      detail: `Multiple genesis snapshots: ${genesisIds.join(', ')}`,
+    };
+  }
+
+  // 3. No forks (multiple children of one parent).
+  const forkParents = [...childrenByParent.entries()]
+    .filter(([, kids]) => kids.length > 1)
+    .map(([parent]) => parent);
+  if (forkParents.length > 0) {
+    return {
+      valid: false,
+      reason: 'fork',
+      detail: `Forked lineage at parent(s): ${forkParents.join(', ')}`,
+    };
+  }
+
+  // 4. Walk the single chain from the genesis to find the unambiguous head.
+  const genesis = genesisIds[0];
+  const visited = new Set<string>();
+  let current: string | undefined = genesis;
+
+  while (current) {
+    if (visited.has(current)) {
+      return { valid: false, reason: 'cycle', detail: `Cycle detected at snapshot ${current}` };
+    }
+    visited.add(current);
+    const kids = childrenByParent.get(current);
+    if (!kids || kids.length === 0) {
+      break;
+    }
+    current = kids[0];
+  }
+
+  // 5. Every snapshot must be reachable from the single genesis.
+  if (visited.size !== snapshotMap.size) {
+    return {
+      valid: false,
+      reason: 'cycle',
+      detail: 'Unreachable snapshots indicate a disconnected cycle',
+    };
+  }
+
+  // 6. Resolve the single current head.
+  if (!current) {
+    return { valid: false, reason: 'ambiguous-head', detail: 'Could not resolve a single current head' };
+  }
+
+  return { valid: true, head: current };
+}
+
+/**
+ * Validate a loaded role lineage against the query discovery status.
+ *
+ * A complete discovery with zero snapshots (`empty`) is a valid vacuous
+ * lineage: there are no snapshots to compare, so no competing authority can be
+ * derived from it. Incomplete/unavailable discovery with zero snapshots remains
+ * fail-closed because the caller must not trust a missing registry.
+ */
+export function validateRoleLineageFromQuery(
+  snapshotMap: ReadonlyMap<string, SnapshotEntry>,
+  queryStatus: 'complete' | 'incomplete' | 'unavailable' | 'empty',
+): RoleLineageValidation {
+  if (snapshotMap.size === 0) {
+    if (queryStatus === 'empty') {
+      return { valid: true, head: '' };
+    }
+    return { valid: false, reason: 'empty', detail: 'No role snapshots loaded' };
+  }
+  return validateRoleLineage(snapshotMap);
+}
+
+/**
+ * Render a canonical lineage validation as a stable human-readable status.
+ * Used for diagnostics in authorization rejection details.
+ */
+export function describeRoleLineage(validation: RoleLineageValidation): string {
+  if (validation.valid) {
+    return `Valid role lineage with current head ${validation.head}`;
+  }
+  return validation.detail ?? `Role lineage invalid: ${validation.reason}`;
+}
+
 /**
  * Validate the lineage of a snapshot within a set of loaded accepted snapshots.
+ *
+ * This is a low-level per-snapshot primitive. Authority-critical code must use
+ * `validateRoleLineage` for the complete, canonical set validation.
  *
  * @param snapshotId - The ID of the snapshot to validate
  * @param identifier - The QDN identifier of the snapshot
@@ -88,6 +247,9 @@ export function validateSnapshotLineage(
  * Detect forks in a set of loaded accepted snapshots.
  *
  * A fork exists when multiple snapshots reference the same previousSnapshotId.
+ * This is a low-level primitive. Authority-critical code must use
+ * `validateRoleLineage`, which composes fork detection with genesis, orphan,
+ * cycle, and head-uniqueness checks.
  */
 export function detectForks(
   snapshotMap: ReadonlyMap<string, SnapshotEntry>,
@@ -112,95 +274,4 @@ export function detectForks(
   }
 
   return forks;
-}
-
-/**
- * Find the latest valid lineage head from loaded accepted snapshots.
- * Returns the snapshot ID at the end of the longest valid chain,
- * or null if no valid genesis exists.
- */
-export function findLineageHead(
-  snapshotMap: ReadonlyMap<string, SnapshotEntry>,
-  sortedByMetadata: string[], // snapshot IDs sorted by QDN metadata (newest first)
-): string | null {
-  // Build parent→child map for valid snapshots
-  const children = new Map<string, string[]>();
-  const hasParent = new Set<string>();
-
-  for (const [id, entry] of snapshotMap) {
-    const prev = entry.snapshot.previousSnapshotId;
-    if (prev && snapshotMap.has(prev) && prev !== id) {
-      const list = children.get(prev) ?? [];
-      list.push(id);
-      children.set(prev, list);
-      hasParent.add(id);
-    }
-  }
-
-  // Find all genesis snapshots (no parent or parent not loaded)
-  const roots = [...snapshotMap.keys()].filter((id) => !hasParent.has(id));
-
-  if (roots.length === 0) return null;
-
-  // Walk from each root to find the deepest descendant, preferring QDN metadata order
-  let best: string | null = null;
-  let bestDepth = -1;
-
-  for (const root of roots) {
-    const result = walkChain(root, children, sortedByMetadata, new Set());
-    if (result && result.depth > bestDepth) {
-      best = result.head;
-      bestDepth = result.depth;
-    } else if (result && result.depth === bestDepth && best) {
-      // Tie-break by QDN metadata order
-      const currentIdx = sortedByMetadata.indexOf(result.head);
-      const bestIdx = sortedByMetadata.indexOf(best);
-      if (currentIdx >= 0 && (bestIdx < 0 || currentIdx < bestIdx)) {
-        best = result.head;
-      }
-    }
-  }
-
-  return best;
-}
-
-interface WalkResult {
-  head: string;
-  depth: number;
-}
-
-function walkChain(
-  nodeId: string,
-  children: ReadonlyMap<string, string[]>,
-  sortedByMetadata: string[],
-  visited: Set<string>,
-): WalkResult | null {
-  if (visited.has(nodeId)) return null; // cycle
-  visited.add(nodeId);
-
-  const kids = children.get(nodeId);
-  if (!kids || kids.length === 0) {
-    return { head: nodeId, depth: 0 };
-  }
-
-  // If fork detected, prefer the child that appears first in QDN metadata order
-  let bestKid: string | null = null;
-  let bestIdx = Infinity;
-
-  for (const kid of kids) {
-    const idx = sortedByMetadata.indexOf(kid);
-    if (idx >= 0 && idx < bestIdx) {
-      bestIdx = idx;
-      bestKid = kid;
-    }
-  }
-
-  if (!bestKid) {
-    return { head: nodeId, depth: 0 };
-  }
-
-  const childResult = walkChain(bestKid, children, sortedByMetadata, new Set(visited));
-  if (!childResult) return { head: nodeId, depth: 0 };
-
-  return { head: childResult.head, depth: childResult.depth + 1 };
 }

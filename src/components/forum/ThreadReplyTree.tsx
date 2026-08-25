@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Reply, ChevronDown, ChevronRight } from 'lucide-react';
 import type { ThreadReply } from '../../types/forum';
 import ReplyForm from './ReplyForm';
+import { RichTextContent } from '../editor/RichTextContent';
 
 interface ThreadReplyTreeProps {
   replies: ThreadReply[];
@@ -63,19 +64,21 @@ const ThreadReplyTree = ({
 
               <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-card)] p-3 shadow-sm">
                 <div className="mb-2 flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-[10px] font-bold text-white">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-[var(--color-accent)] text-[10px] font-bold text-white">
                     {reply.authorName.slice(0, 2).toUpperCase()}
                   </div>
                   <span className="text-xs font-medium text-[var(--color-text-primary)]">
                     {reply.authorName}
                   </span>
                   <span className="text-[10px] text-[var(--color-text-muted)]">
-                    {new Date(reply.createdAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {reply.createdAt
+                      ? new Date(reply.createdAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Unknown'}
                   </span>
                   {hasChildren && (
                     <button
@@ -98,9 +101,9 @@ const ThreadReplyTree = ({
                     </button>
                   )}
                 </div>
-                <p className="mb-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-                  {reply.content}
-                </p>
+                <div className="mb-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+                  <RichTextContent value={reply.content} />
+                </div>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() =>

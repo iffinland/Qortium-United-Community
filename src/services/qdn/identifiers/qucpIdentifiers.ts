@@ -16,6 +16,7 @@ const FAMILY_IDENTIFIER_PREFIXES: Record<QucpResourceFamily, string> = {
   'qucp-wiki': 'wiki',
   'qucp-forum-topic': 'forum-topic',
   'qucp-support-ticket': 'support-ticket',
+  'qucp-support-ticket-status': 'support-ticket-status',
   'qucp-post-comment': 'post-comment',
   'qucp-forum-reply': 'forum-reply',
   'qucp-ticket-reply': 'ticket-reply',
@@ -23,6 +24,7 @@ const FAMILY_IDENTIFIER_PREFIXES: Record<QucpResourceFamily, string> = {
   'qucp-poll': 'poll',
   'qucp-vote': 'vote',
   'qucp-project': 'project',
+  'qucp-event': 'event',
   'qucp-reaction': 'reaction',
   'qucp-owner-tombstone': 'owner-tombstone',
 };

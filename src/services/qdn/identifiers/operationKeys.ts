@@ -71,3 +71,22 @@ export async function verifyTombstoneOwnerKey(key: string, addr: string): Promis
 export async function verifyTombstoneTargetKey(key: string, family: string, entityId: string): Promise<boolean> {
   return key.length === OPERATION_KEY_HEX_LENGTH && key === await buildTombstoneTargetKey(family, entityId);
 }
+
+// ---- Support Ticket Close Keys ----
+
+export async function buildTicketCloseActorKey(addr: string): Promise<string> {
+  checkWallet(addr);
+  return (await sha256Hex(`qucp:v1:ticket-close:actor:${addr}`)).slice(0, OPERATION_KEY_HEX_LENGTH);
+}
+
+export async function buildTicketCloseTargetKey(family: string, entityId: string): Promise<string> {
+  return (await sha256Hex(`qucp:v1:ticket-close:target:${family}:${entityId}`)).slice(0, OPERATION_KEY_HEX_LENGTH);
+}
+
+export async function verifyTicketCloseActorKey(key: string, addr: string): Promise<boolean> {
+  return key.length === OPERATION_KEY_HEX_LENGTH && key === await buildTicketCloseActorKey(addr);
+}
+
+export async function verifyTicketCloseTargetKey(key: string, family: string, entityId: string): Promise<boolean> {
+  return key.length === OPERATION_KEY_HEX_LENGTH && key === await buildTicketCloseTargetKey(family, entityId);
+}

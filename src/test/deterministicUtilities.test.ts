@@ -8,9 +8,6 @@ import {
 } from '../services/qortium/qortiumClient';
 import { encodeJsonToBase64 } from '../services/qortium/qdnService';
 import { parseMarkdown } from '../services/forum/markdown';
-import { getUserRole, createDefaultRoleRegistry } from '../services/qortium/rolesService';
-import type { RoleRegistry } from '../types';
-import { trustedSysOpRegistry, roleTestAddresses } from './fixtures/qdnFixtures';
 
 // ---- parseQdnResponse ----
 
@@ -164,65 +161,5 @@ describe('parseMarkdown', () => {
   it('renders links', () => {
     const result = parseMarkdown('[click here](https://example.com)');
     expect(result).toHaveLength(1);
-  });
-});
-
-// ---- getUserRole ----
-
-describe('getUserRole', () => {
-  const registry = trustedSysOpRegistry;
-
-  it('returns Member for empty address', () => {
-    expect(getUserRole('', registry)).toBe('Member');
-  });
-
-  it('returns SysOp for primary SysOp address', () => {
-    expect(getUserRole(registry.primarySysOpAddress, registry)).toBe('SysOp');
-  });
-
-  it('returns SysOp for address in sysOps list', () => {
-    // sysOps is empty in our fixture; add one dynamically
-    const withSysOps: RoleRegistry = { ...registry, sysOps: ['QSysOpExtraExtraExtraExtraExtraE'] };
-    expect(getUserRole('QSysOpExtraExtraExtraExtraExtraE', withSysOps)).toBe('SysOp');
-  });
-
-  it('returns Admin for admin address', () => {
-    expect(getUserRole(roleTestAddresses.Admin, registry)).toBe('Admin');
-  });
-
-  it('returns Moderator for moderator address', () => {
-    expect(getUserRole(roleTestAddresses.Moderator, registry)).toBe('Moderator');
-  });
-
-  it('returns Creator for creator address', () => {
-    expect(getUserRole(roleTestAddresses.Creator, registry)).toBe('Creator');
-  });
-
-  it('returns Member for unknown address', () => {
-    expect(getUserRole('QUnknownUnknownUnknownUnknownUnkn', registry)).toBe('Member');
-  });
-
-  it('is case-sensitive for address matching', () => {
-    const lower = roleTestAddresses.Admin.toLowerCase();
-    // Addresses are case-sensitive; lowercased should not match
-    expect(getUserRole(lower, registry)).toBe('Member');
-  });
-});
-
-// ---- createDefaultRoleRegistry ----
-
-describe('createDefaultRoleRegistry', () => {
-  it('returns a registry with empty role lists', () => {
-    const registry = createDefaultRoleRegistry();
-    expect(registry.sysOps).toEqual([]);
-    expect(registry.admins).toEqual([]);
-    expect(registry.moderators).toEqual([]);
-    expect(registry.creators).toEqual([]);
-    expect(registry.updatedAt).toBeNull();
-  });
-
-  it('sets the primary SysOp address', () => {
-    const registry = createDefaultRoleRegistry();
-    expect(registry.primarySysOpAddress).toBe('QWifxJWGbJZ6Yo6kiimFkBGcm4AxQefdUm');
   });
 });

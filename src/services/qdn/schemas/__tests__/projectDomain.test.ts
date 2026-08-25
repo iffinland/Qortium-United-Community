@@ -271,7 +271,7 @@ describe('immutable fields', () => {
 describe('project snapshot reduction', () => {
   const BASE_TIME = 1700000000000;
 
-  it('single snapshot yields canonical project', () => {
+  it('single planned snapshot yields canonical project', () => {
     const proj = validProject({ status: 'planned' });
     const result = reduceProjectSnapshots('proj00001', [envelope(proj)]);
     expect(result.project).not.toBeNull();
@@ -281,23 +281,25 @@ describe('project snapshot reduction', () => {
     expect(result.rejectedCount).toBe(0);
   });
 
-  it('initial active accepted', () => {
+  it('single active snapshot accepted', () => {
     const proj = validProject({ entityId: 'proj00002', status: 'active' });
     const result = reduceProjectSnapshots('proj00002', [envelope(proj)]);
     expect(result.project).not.toBeNull();
     expect(result.project!.status).toBe('active');
   });
 
-  it('initial completed rejected', () => {
+  it('single completed snapshot is canonical after overwrite', () => {
     const proj = validProject({ entityId: 'proj00003', status: 'completed' });
     const result = reduceProjectSnapshots('proj00003', [envelope(proj)]);
-    expect(result.project).toBeNull();
+    expect(result.project).not.toBeNull();
+    expect(result.project!.status).toBe('completed');
   });
 
-  it('initial archived rejected', () => {
+  it('single archived snapshot is canonical after overwrite', () => {
     const proj = validProject({ entityId: 'proj00004', status: 'archived' });
     const result = reduceProjectSnapshots('proj00004', [envelope(proj)]);
-    expect(result.project).toBeNull();
+    expect(result.project).not.toBeNull();
+    expect(result.project!.status).toBe('archived');
   });
 
   it('empty snapshots returns null', () => {
@@ -306,29 +308,19 @@ describe('project snapshot reduction', () => {
     expect(result.rejectedCount).toBe(0);
   });
 
-  it('canonical owner is earliest wallet', () => {
+  it('latest snapshot publisher is canonical owner', () => {
     const early = validProject({ entityId: 'proj00001', status: 'planned', ownerAddress: OWNER, createdAt: BASE_TIME });
     const later = validProject({ entityId: 'proj00001', status: 'active', ownerAddress: FOREIGN, createdAt: BASE_TIME });
     const result = reduceProjectSnapshots('proj00001', [
       envelope(later, { created: BASE_TIME + 1000 }),
       envelope(early, { created: BASE_TIME }),
     ]);
-    expect(result.project!.canonicalOwnerWallet).toBe(OWNER);
-    expect(result.rejectedCount).toBe(1);
+    expect(result.project!.canonicalOwnerWallet).toBe(FOREIGN);
+    expect(result.project!.status).toBe('active');
+    expect(result.rejectedCount).toBe(0);
   });
 
-  it('cross-wallet updates rejected', () => {
-    const proj1 = validProject({ entityId: 'proj00001', status: 'planned', ownerAddress: OWNER, createdAt: BASE_TIME });
-    const proj2 = validProject({ entityId: 'proj00001', status: 'active', ownerAddress: FOREIGN, createdAt: BASE_TIME });
-    const result = reduceProjectSnapshots('proj00001', [
-      envelope(proj1, { created: BASE_TIME }),
-      envelope(proj2, { created: BASE_TIME + 1000 }),
-    ]);
-    expect(result.rejectedCount).toBe(1);
-    expect(result.project!.status).toBe('planned');
-  });
-
-  it('planned → active accepted', () => {
+  it('latest snapshot wins (planned → active)', () => {
     const proj1 = validProject({ entityId: 'proj00001', status: 'planned', createdAt: BASE_TIME });
     const proj2 = validProject({ entityId: 'proj00001', status: 'active', createdAt: BASE_TIME });
     const result = reduceProjectSnapshots('proj00001', [
@@ -339,37 +331,37 @@ describe('project snapshot reduction', () => {
     expect(result.rejectedCount).toBe(0);
   });
 
-  it('planned → completed rejected', () => {
+  it('latest snapshot wins (planned → completed)', () => {
     const proj1 = validProject({ entityId: 'proj00001', status: 'planned', createdAt: BASE_TIME });
     const proj2 = validProject({ entityId: 'proj00001', status: 'completed', createdAt: BASE_TIME });
     const result = reduceProjectSnapshots('proj00001', [
       envelope(proj1, { created: BASE_TIME }),
       envelope(proj2, { created: BASE_TIME + 1000 }),
     ]);
-    expect(result.project!.status).toBe('planned');
-    expect(result.rejectedCount).toBe(1);
+    expect(result.project!.status).toBe('completed');
+    expect(result.rejectedCount).toBe(0);
   });
 
-  it('active → planned rejected', () => {
+  it('latest snapshot wins (active → planned)', () => {
     const proj1 = validProject({ entityId: 'proj00001', status: 'active', createdAt: BASE_TIME });
     const proj2 = validProject({ entityId: 'proj00001', status: 'planned', createdAt: BASE_TIME });
     const result = reduceProjectSnapshots('proj00001', [
       envelope(proj1, { created: BASE_TIME }),
       envelope(proj2, { created: BASE_TIME + 1000 }),
     ]);
-    expect(result.project!.status).toBe('active');
-    expect(result.rejectedCount).toBe(1);
+    expect(result.project!.status).toBe('planned');
+    expect(result.rejectedCount).toBe(0);
   });
 
-  it('immutable field changes rejected', () => {
+  it('latest snapshot content is authoritative (no retained history)', () => {
     const proj1 = validProject({ entityId: 'proj00001', status: 'planned', createdAt: BASE_TIME });
     const proj2 = validProject({ entityId: 'proj00001', status: 'active', ownerName: 'Bob', createdAt: BASE_TIME });
     const result = reduceProjectSnapshots('proj00001', [
       envelope(proj1, { created: BASE_TIME }),
       envelope(proj2, { created: BASE_TIME + 1000 }),
     ]);
-    expect(result.rejectedCount).toBe(1);
-    expect(result.project!.canonicalOwnerName).toBe('Alice');
+    expect(result.rejectedCount).toBe(0);
+    expect(result.project!.canonicalOwnerName).toBe('Bob');
   });
 
   it('same-state update accepted (title change)', () => {
@@ -383,7 +375,7 @@ describe('project snapshot reduction', () => {
     expect(result.rejectedCount).toBe(0);
   });
 
-  it('full lifecycle: planned → active → completed → archived', () => {
+  it('latest terminal snapshot is canonical across lifecycle inputs', () => {
     const snapshots = [
       envelope(validProject({ entityId: 'proj00001', status: 'planned', createdAt: BASE_TIME }), { created: BASE_TIME }),
       envelope(validProject({ entityId: 'proj00001', status: 'active', createdAt: BASE_TIME }), { created: BASE_TIME + 1000 }),
@@ -395,7 +387,7 @@ describe('project snapshot reduction', () => {
     expect(result.rejectedCount).toBe(0);
   });
 
-  it('planned → archived (direct archive) accepted', () => {
+  it('direct archive (planned → archived) produces archived', () => {
     const snapshots = [
       envelope(validProject({ entityId: 'proj00001', status: 'planned', createdAt: BASE_TIME }), { created: BASE_TIME }),
       envelope(validProject({ entityId: 'proj00001', status: 'archived', createdAt: BASE_TIME }), { created: BASE_TIME + 1000 }),
@@ -405,18 +397,16 @@ describe('project snapshot reduction', () => {
     expect(result.rejectedCount).toBe(0);
   });
 
-  it('archived is terminal: no further snapshots accepted', () => {
+  it('archived terminal state survives a single-coordinate read', () => {
     const snapshots = [
-      envelope(validProject({ entityId: 'proj00001', status: 'planned', createdAt: BASE_TIME }), { created: BASE_TIME }),
       envelope(validProject({ entityId: 'proj00001', status: 'archived', createdAt: BASE_TIME }), { created: BASE_TIME + 1000 }),
-      envelope(validProject({ entityId: 'proj00001', status: 'completed', createdAt: BASE_TIME }), { created: BASE_TIME + 2000 }),
     ];
     const result = reduceProjectSnapshots('proj00001', snapshots);
     expect(result.project!.status).toBe('archived');
-    expect(result.rejectedCount).toBe(1);
+    expect(result.rejectedCount).toBe(0);
   });
 
-  it('archived to archived same-state rejected', () => {
+  it('latest snapshot content wins even after archived', () => {
     const snapshots = [
       envelope(validProject({ entityId: 'proj00001', status: 'planned', createdAt: BASE_TIME }), { created: BASE_TIME }),
       envelope(validProject({ entityId: 'proj00001', status: 'archived', createdAt: BASE_TIME }), { created: BASE_TIME + 1000 }),
@@ -424,20 +414,20 @@ describe('project snapshot reduction', () => {
     ];
     const result = reduceProjectSnapshots('proj00001', snapshots);
     expect(result.project!.status).toBe('archived');
-    expect(result.rejectedCount).toBe(1);
-    expect(result.project!.snapshot.data.title).toBe(validProject().title);
+    expect(result.rejectedCount).toBe(0);
+    expect(result.project!.snapshot.data.title).toBe('Changed');
   });
 
-  it('funding metadata immutable across updates', () => {
+  it('latest snapshot funding metadata is authoritative', () => {
     const proj1 = validProject({ entityId: 'proj00001', status: 'planned', donationAddress: OWNER, fundingGoal: 10000, createdAt: BASE_TIME });
     const proj2 = validProject({ entityId: 'proj00001', status: 'active', donationAddress: FOREIGN, fundingGoal: 20000, createdAt: BASE_TIME });
     const result = reduceProjectSnapshots('proj00001', [
       envelope(proj1, { created: BASE_TIME }),
       envelope(proj2, { created: BASE_TIME + 1000 }),
     ]);
-    expect(result.rejectedCount).toBe(1);
-    expect(result.project!.snapshot.data.donationAddress).toBe(OWNER);
-    expect(result.project!.snapshot.data.fundingGoal).toBe(10000);
+    expect(result.rejectedCount).toBe(0);
+    expect(result.project!.snapshot.data.donationAddress).toBe(FOREIGN);
+    expect(result.project!.snapshot.data.fundingGoal).toBe(20000);
   });
 
   it('tags can change across updates', () => {

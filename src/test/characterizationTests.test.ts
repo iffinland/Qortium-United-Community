@@ -6,49 +6,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, it, expect } from 'vitest';
-import { getUserRole } from '../services/qortium/rolesService';
 import { parseQdnResponse } from '../services/qortium/qortiumClient';
 import {
-  trustedSysOpRegistry,
-  untrustedRoleRegistry,
   farFutureTimestamp,
   sameEntityDifferentPublishers,
 } from './fixtures/qdnFixtures';
 import { buildSupportTicketPayload, buildSupportCategoryPayload } from '../services/qdn/runtime/supportRuntime';
 import { supportTicketSchema } from '../services/qdn/schemas/supportTicketSchema';
-
-// ---- Role Registry Selection (LEGACY) ----
-
-describe('role registry selection', () => {
-  it('documents current behavior: getUserRole accepts any well-formed registry', () => {
-    // LEGACY: getUserRole does not validate the registry publisher.
-    // It trusts any RoleRegistry object passed to it.
-    const role = getUserRole(
-      'QAttackerAttackerAttackerAttackerA',
-      untrustedRoleRegistry,
-    );
-    // The attacker who crafted this registry made themselves an admin
-    expect(role).toBe('Admin');
-  });
-
-  it('documents current behavior: getUserRole correctly matches against trusted registry', () => {
-    const role = getUserRole('QN3XYzAbCdEfGhIjKlMnOpQrStUvWxYz', trustedSysOpRegistry);
-    expect(role).toBe('Admin');
-  });
-
-  it('documents current intended target: untrusted registry should NOT grant roles', () => {
-    // This test documents the TARGET behavior after Phase 3 refactor.
-    // Currently PASSES (untrusted registry IS accepted), but marked as legacy.
-    // After refactor, this should FAIL — untrusted registries should be rejected.
-    const role = getUserRole(
-      'QAttackerAttackerAttackerAttackerA',
-      untrustedRoleRegistry,
-    );
-    // LEGACY: currently accepts untrusted registry
-    // TARGET: should return 'Member' for untrusted registries
-    expect(role).toBe('Admin'); // Will change to 'Member' after refactor
-  });
-});
 
 // ---- Duplicate Entity Handling (LEGACY) ----
 
@@ -574,10 +538,10 @@ function makeReplyPayload(overrides: {
 describe('FORUM AUTHORITY: Forged ownerName rejection (production path)', () => {
   it('topic with forged ownerName is rejected', async () => {
     // Publisher is Bob, but payload says ownerName is Mallory
-    const envelope = makeTopicPayload({ ownerName: MAL, publisherName: BOB });
+    const envelope = makeTopicPayload({ entityId: 'topic0001', ownerName: MAL, publisherName: BOB });
     const result = await validatedRuntimeQuery(
-      async () => [{ name: BOB, service: 'DOCUMENT', identifier: 'qucp-forum-topic-t1', created: 1000, updated: 1000 }],
-      async () => envelope,
+      async () => [{ name: BOB, service: 'DOCUMENT', identifier: 'qucp-forum-topic-topic0001', created: 1000, updated: 1000 }],
+      async () => envelope.data,
       parseAsForumTopic,
       forumTopicPolicy,
       resolverForMap({ [BOB]: BOB_WALLET }),
@@ -588,10 +552,10 @@ describe('FORUM AUTHORITY: Forged ownerName rejection (production path)', () => 
   });
 
   it('reply with forged ownerName is rejected', async () => {
-    const envelope = makeReplyPayload({ ownerName: MAL, publisherName: BOB });
+    const envelope = makeReplyPayload({ entityId: 'reply0001', ownerName: MAL, publisherName: BOB });
     const result = await validatedRuntimeQuery(
-      async () => [{ name: BOB, service: 'DOCUMENT', identifier: 'qucp-forum-reply-r1', created: 1000, updated: 1000 }],
-      async () => envelope,
+      async () => [{ name: BOB, service: 'DOCUMENT', identifier: 'qucp-forum-reply-reply0001', created: 1000, updated: 1000 }],
+      async () => envelope.data,
       parseAsForumReply,
       forumReplyPolicy,
       resolverForMap({ [BOB]: BOB_WALLET }),
@@ -605,10 +569,10 @@ describe('FORUM AUTHORITY: Forged ownerName rejection (production path)', () => 
 describe('FORUM AUTHORITY: Forged ownerAddress rejection (production path)', () => {
   it('topic with forged ownerAddress is rejected', async () => {
     // Publisher name matches, but resolved wallet does not match payload ownerAddress
-    const envelope = makeTopicPayload({ ownerName: ALICE, ownerAddress: MAL_WALLET, publisherName: ALICE });
+    const envelope = makeTopicPayload({ entityId: 'topic0002', ownerName: ALICE, ownerAddress: MAL_WALLET, publisherName: ALICE });
     const result = await validatedRuntimeQuery(
-      async () => [{ name: ALICE, service: 'DOCUMENT', identifier: 'qucp-forum-topic-t1', created: 1000, updated: 1000 }],
-      async () => envelope,
+      async () => [{ name: ALICE, service: 'DOCUMENT', identifier: 'qucp-forum-topic-topic0002', created: 1000, updated: 1000 }],
+      async () => envelope.data,
       parseAsForumTopic,
       forumTopicPolicy,
       resolverForMap({ [ALICE]: ALICE_WALLET }),
@@ -619,10 +583,10 @@ describe('FORUM AUTHORITY: Forged ownerAddress rejection (production path)', () 
   });
 
   it('reply with forged ownerAddress is rejected', async () => {
-    const envelope = makeReplyPayload({ ownerName: ALICE, ownerAddress: MAL_WALLET, publisherName: ALICE });
+    const envelope = makeReplyPayload({ entityId: 'reply0002', ownerName: ALICE, ownerAddress: MAL_WALLET, publisherName: ALICE });
     const result = await validatedRuntimeQuery(
-      async () => [{ name: ALICE, service: 'DOCUMENT', identifier: 'qucp-forum-reply-r1', created: 1000, updated: 1000 }],
-      async () => envelope,
+      async () => [{ name: ALICE, service: 'DOCUMENT', identifier: 'qucp-forum-reply-reply0002', created: 1000, updated: 1000 }],
+      async () => envelope.data,
       parseAsForumReply,
       forumReplyPolicy,
       resolverForMap({ [ALICE]: ALICE_WALLET }),
@@ -1328,7 +1292,7 @@ describe('SUPPORT TICKET AUTHORITY: Forged ownerName rejection', () => {
     const envelope = makeTicketEnvelope({ entityId: 'ticket001', ownerName: ALICE, publisherName: BOB, ownerAddress: ALICE_WALLET });
     const result = await validatedRuntimeQuery(
       async () => [{ name: BOB, service: 'DOCUMENT', identifier: 'qucp-support-ticket-ticket001', created: 1000, updated: 1000 }],
-      async () => envelope,
+      async () => envelope.data,
       parseAsSupportTicket,
       supportTicketPolicy,
       resolverForSupport({ [BOB]: BOB_WALLET }),
@@ -1344,7 +1308,7 @@ describe('SUPPORT TICKET AUTHORITY: Forged ownerAddress rejection', () => {
     const envelope = makeTicketEnvelope({ entityId: 'ticket002', ownerName: ALICE, ownerAddress: BOB_WALLET, publisherName: ALICE });
     const result = await validatedRuntimeQuery(
       async () => [{ name: ALICE, service: 'DOCUMENT', identifier: 'qucp-support-ticket-ticket002', created: 1000, updated: 1000 }],
-      async () => envelope,
+      async () => envelope.data,
       parseAsSupportTicket,
       supportTicketPolicy,
       resolverForSupport({ [ALICE]: ALICE_WALLET }),
@@ -1380,7 +1344,7 @@ describe('SUPPORT REPLY AUTHORITY: Forged ownerName rejection', () => {
     const envelope = makeReplyEnvelope({ entityId: 'reply0001', ownerName: ALICE, publisherName: BOB, ownerAddress: ALICE_WALLET, parentEntityId: 'ticket001' });
     const result = await validatedRuntimeQuery(
       async () => [{ name: BOB, service: 'DOCUMENT', identifier: 'qucp-ticket-reply-reply0001', created: 1000, updated: 1000 }],
-      async () => envelope,
+      async () => envelope.data,
       parseAsTicketReply,
       ticketReplyPolicy,
       resolverForSupport({ [BOB]: BOB_WALLET }),
@@ -1396,7 +1360,7 @@ describe('SUPPORT REPLY AUTHORITY: Forged ownerAddress rejection', () => {
     const envelope = makeReplyEnvelope({ entityId: 'reply0002', ownerName: ALICE, ownerAddress: BOB_WALLET, publisherName: ALICE, parentEntityId: 'ticket001' });
     const result = await validatedRuntimeQuery(
       async () => [{ name: ALICE, service: 'DOCUMENT', identifier: 'qucp-ticket-reply-reply0002', created: 1000, updated: 1000 }],
-      async () => envelope,
+      async () => envelope.data,
       parseAsTicketReply,
       ticketReplyPolicy,
       resolverForSupport({ [ALICE]: ALICE_WALLET }),
@@ -2060,48 +2024,53 @@ describe('POLL: Snapshot reduction', () => {
     };
   }
 
-  it('establishes canonical owner from first accepted snapshot', () => {
+  it('accepts the current discoverable snapshot as canonical', () => {
     const r = reducePollSnapshots('p1', [
       makePollEnv('p1', POLL_WALLET, false, 1000),
     ]);
     expect(r.poll).not.toBeNull();
     expect(r.poll!.canonicalOwnerWallet).toBe(POLL_WALLET);
+    expect(r.poll!.isClosed).toBe(false);
+    expect(r.rejectedCount).toBe(0);
   });
 
-  it('rejects cross-wallet update', () => {
+  it('closed poll remains canonical after overwrite (only closed coordinate discoverable)', () => {
     const r = reducePollSnapshots('p1', [
-      makePollEnv('p1', POLL_WALLET, false, 1000),
-      makePollEnv('p1', VOTER_A, false, 2000),
+      makePollEnv('p1', POLL_WALLET, true, 2000),
     ]);
     expect(r.poll).not.toBeNull();
-    expect(r.rejectedCount).toBeGreaterThan(0);
+    expect(r.poll!.isClosed).toBe(true);
+    expect(r.poll!.canonicalOwnerWallet).toBe(POLL_WALLET);
+    expect(r.rejectedCount).toBe(0);
   });
 
-  it('allows false→true close', () => {
+  it('latest snapshot is canonical without requiring retained history', () => {
     const r = reducePollSnapshots('p1', [
       makePollEnv('p1', POLL_WALLET, false, 1000),
       makePollEnv('p1', POLL_WALLET, true, 2000),
     ]);
     expect(r.poll).not.toBeNull();
     expect(r.poll!.isClosed).toBe(true);
+    expect(r.rejectedCount).toBe(0);
   });
 
-  it('rejects true→false reopen', () => {
+  it('current snapshot wins even when it is an open (reopened-like) payload', () => {
     const r = reducePollSnapshots('p1', [
       makePollEnv('p1', POLL_WALLET, false, 1000),
       makePollEnv('p1', POLL_WALLET, true, 2000),
       makePollEnv('p1', POLL_WALLET, false, 3000),
     ]);
-    expect(r.poll!.isClosed).toBe(true);
+    expect(r.poll).not.toBeNull();
+    expect(r.poll!.isClosed).toBe(false);
   });
 
-  it('rejects immutable field change', () => {
+  it('current snapshot is authoritative for content without retained history', () => {
     const r = reducePollSnapshots('p1', [
       makePollEnv('p1', POLL_WALLET, false, 1000),
       makePollEnv('p1', POLL_WALLET, false, 2000, { question: 'Changed!' }),
     ]);
-    expect(r.poll!.snapshot.data.question).toBe('Q?');
-    expect(r.rejectedCount).toBeGreaterThan(0);
+    expect(r.poll!.snapshot.data.question).toBe('Changed!');
+    expect(r.rejectedCount).toBe(0);
   });
 });
 
@@ -2557,8 +2526,9 @@ describe('POLL PERMUTATION: Input order stability', () => {
       makePollEnv('p1', POLL_WALLET, false, 1000) as any,
     ]);
     expect(r1.poll!.canonicalOwnerWallet).toBe(r2.poll!.canonicalOwnerWallet);
-    // The earliest (by created time) wallet should be canonical owner
-    expect(r1.poll!.canonicalOwnerWallet).toBe(VOTER_A);
+    // QDN exposes only the current coordinate, so the latest payload's
+    // publisher is canonical regardless of input order.
+    expect(r1.poll!.canonicalOwnerWallet).toBe(POLL_WALLET);
   });
 
   it('vote input order does not affect reduction', () => {

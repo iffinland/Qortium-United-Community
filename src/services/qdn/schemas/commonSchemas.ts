@@ -101,6 +101,7 @@ export const resourceFamilyField = z.enum([
   'qucp-wiki',
   'qucp-forum-topic',
   'qucp-support-ticket',
+  'qucp-support-ticket-status',
   'qucp-post-comment',
   'qucp-forum-reply',
   'qucp-ticket-reply',
@@ -108,6 +109,7 @@ export const resourceFamilyField = z.enum([
   'qucp-poll',
   'qucp-vote',
   'qucp-project',
+  'qucp-event',
   'qucp-reaction',
   'qucp-owner-tombstone',
 ] as const);

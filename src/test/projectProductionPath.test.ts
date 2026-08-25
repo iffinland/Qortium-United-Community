@@ -211,7 +211,7 @@ describe('full project discovery call chain', () => {
     expect(reduced.projects[0].canonicalOwnerWallet).toBe(OWNER);
   });
 
-  it('cross-wallet update excluded, owner state preserved', () => {
+  it('latest snapshot publisher is canonical owner', () => {
     const proj1 = validProjectData({ status: 'planned', createdAt: BASE_TIME });
     const proj2 = validProjectData({ status: 'active', createdAt: BASE_TIME, ownerAddress: OWNER });
 
@@ -222,10 +222,11 @@ describe('full project discovery call chain', () => {
 
     const reduced = reduceProjectResults(result);
     expect(reduced.projects).toHaveLength(1);
-    expect(reduced.projects[0].status).toBe('planned');
+    expect(reduced.projects[0].status).toBe('active');
+    expect(reduced.projects[0].canonicalOwnerWallet).toBe(FOREIGN);
   });
 
-  it('immutable-field-changing update excluded', () => {
+  it('latest snapshot content is authoritative', () => {
     const proj1 = validProjectData({ status: 'planned', createdAt: BASE_TIME, ownerName: 'Alice' });
     const proj2 = validProjectData({ status: 'active', createdAt: BASE_TIME, ownerName: 'Bob' });
 
@@ -236,10 +237,10 @@ describe('full project discovery call chain', () => {
 
     const reduced = reduceProjectResults(result);
     expect(reduced.projects).toHaveLength(1);
-    expect(reduced.projects[0].canonicalOwnerName).toBe('Alice');
+    expect(reduced.projects[0].canonicalOwnerName).toBe('Bob');
   });
 
-  it('invalid lifecycle update excluded, last valid preserved', () => {
+  it('latest snapshot wins even for a backward-looking status', () => {
     const proj1 = validProjectData({ status: 'active', createdAt: BASE_TIME });
     const proj2 = validProjectData({ status: 'planned', createdAt: BASE_TIME });
 
@@ -250,12 +251,11 @@ describe('full project discovery call chain', () => {
 
     const reduced = reduceProjectResults(result);
     expect(reduced.projects).toHaveLength(1);
-    expect(reduced.projects[0].status).toBe('active');
-    expect(reduced.diagnostics.length).toBeGreaterThan(0);
-    expect(reduced.diagnostics.some(d => d.code === 'project-invalid-status-transition')).toBe(true);
+    expect(reduced.projects[0].status).toBe('planned');
+    expect(reduced.diagnostics).toHaveLength(0);
   });
 
-  it('planned→completed rejected', () => {
+  it('planned→completed is accepted as the current terminal state', () => {
     const proj1 = validProjectData({ status: 'planned', createdAt: BASE_TIME });
     const proj2 = validProjectData({ status: 'completed', createdAt: BASE_TIME });
 
@@ -265,15 +265,16 @@ describe('full project discovery call chain', () => {
     ], 'complete');
 
     const reduced = reduceProjectResults(result);
-    expect(reduced.projects[0].status).toBe('planned');
+    expect(reduced.projects[0].status).toBe('completed');
   });
 
-  it('initial completed project rejected entirely', () => {
+  it('single completed project remains canonical after reload', () => {
     const proj = validProjectData({ status: 'completed', createdAt: BASE_TIME });
     const result = makeValidatedResult([makeEnvelope(proj, BASE_TIME)], 'complete');
     const reduced = reduceProjectResults(result);
-    expect(reduced.projects).toHaveLength(0);
-    expect(reduced.diagnostics.some(d => d.code === 'project-invalid-initial-status')).toBe(true);
+    expect(reduced.projects).toHaveLength(1);
+    expect(reduced.projects[0].status).toBe('completed');
+    expect(reduced.diagnostics).toHaveLength(0);
   });
 });
 
@@ -436,12 +437,11 @@ describe('diagnostic ordering', () => {
     expect(r1.diagnostics.length).toBe(r2.diagnostics.length);
   });
 
-  it('diagnostics include stable context', () => {
+  it('terminal snapshot produces no lifecycle rejection diagnostic', () => {
     const proj = validProjectData({ entityId: 'proj00001', status: 'completed' });
     const result = makeValidatedResult([makeEnvelope(proj, BASE)], 'complete');
     const reduced = reduceProjectResults(result);
-    const diag = reduced.diagnostics.find(d => d.code === 'project-invalid-initial-status');
-    expect(diag).toBeDefined();
-    expect(diag!.code).toBe('project-invalid-initial-status');
+    expect(reduced.diagnostics).toHaveLength(0);
+    expect(reduced.projects[0].status).toBe('completed');
   });
 });

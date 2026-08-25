@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useCreateThreadMutation } from '../../store/api/forumApi';
 import { useAppSelector } from '../../store';
-import RichTextEditor from './RichTextEditor';
+import { RichTextEditor } from '../editor/RichTextEditor';
 
 interface NewThreadFormProps {
   categoryId: string;
@@ -40,7 +40,7 @@ const NewThreadForm = ({ categoryId, onCancel, onSuccess }: NewThreadFormProps) 
 
   if (!isAuthenticated) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+      <div className="rounded-lg border border-amber-800 bg-amber-950 p-4 text-sm text-amber-400">
         Sign in to create a new thread.
       </div>
     );
@@ -56,7 +56,7 @@ const NewThreadForm = ({ categoryId, onCancel, onSuccess }: NewThreadFormProps) 
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Thread title..."
-          className="w-full rounded-lg border border-[var(--color-border-subtle)] bg-white p-2.5 text-sm dark:bg-slate-900 dark:text-white"
+          className="w-full rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-sm text-white"
           required
         />
       </div>
@@ -65,7 +65,8 @@ const NewThreadForm = ({ categoryId, onCancel, onSuccess }: NewThreadFormProps) 
         <RichTextEditor
           value={content}
           onChange={setContent}
-          placeholder="Write your post using Markdown..."
+          ownerName={name || ''}
+          placeholder="Write your post..."
           minRows={5}
         />
       </div>
@@ -76,7 +77,7 @@ const NewThreadForm = ({ categoryId, onCancel, onSuccess }: NewThreadFormProps) 
           value={tags}
           onChange={(e) => setTags(e.target.value)}
           placeholder="Tags (comma separated)"
-          className="w-full rounded-lg border border-[var(--color-border-subtle)] bg-white p-2.5 text-sm dark:bg-slate-900 dark:text-white"
+          className="w-full rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2.5 text-sm text-white"
         />
       </div>
 
@@ -84,14 +85,14 @@ const NewThreadForm = ({ categoryId, onCancel, onSuccess }: NewThreadFormProps) 
         <button
           type="submit"
           disabled={!title.trim() || !content.trim() || isLoading}
-          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:opacity-50"
+          className="rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
         >
           {isLoading ? 'Posting...' : 'Post Thread'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-lg border border-[var(--color-border-subtle)] px-4 py-2 text-sm text-[var(--color-text-muted)] transition hover:bg-slate-50 dark:hover:bg-slate-800"
+          className="rounded-lg border border-[var(--color-border-subtle)] px-4 py-2 text-sm text-[var(--color-text-muted)] transition hover:bg-slate-800"
         >
           Cancel
         </button>

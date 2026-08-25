@@ -1,12 +1,15 @@
 // ===== Qortium United Community – App Root =====
 
-import { useEffect, useState, Suspense, lazy } from 'react';
+import { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import { useAppDispatch, useAppSelector } from './store';
 import { initializeAuth } from './store/slices/authSlice';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { ToastProvider } from './components/common/ToastProvider';
+import { listenForAccountChanges } from './services/qortium/accountChangeListener';
+import { invalidateAccountScopedCaches } from './services/qortium/walletService';
+import { invalidateOwnerNameCache } from './services/qortium/qortiumClient';
 
 // Lazy-loaded pages for code splitting
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -24,7 +27,7 @@ const SupportPage = lazy(() => import('./pages/SupportPage'));
 const TicketDetailPage = lazy(() => import('./pages/TicketDetailPage'));
 const WikiPage = lazy(() => import('./pages/WikiPage'));
 const WikiArticlePage = lazy(() => import('./pages/WikiArticlePage'));
-const WikiEditPage = lazy(() => import('./pages/WikiEditPage'));
+const EventsPage = lazy(() => import('./pages/EventsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -32,44 +35,32 @@ const PageLoader = () => (
   </div>
 );
 
-const THEME_KEY = 'quc-theme';
-
 const AppRoutes = () => {
   const dispatch = useAppDispatch();
   const { error } = useAppSelector((state) => state.auth);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isDark, setIsDark] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    const stored = localStorage.getItem(THEME_KEY);
-    if (stored) return stored === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
 
   useEffect(() => {
     dispatch(initializeAuth());
   }, [dispatch]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    root.classList.toggle('dark', isDark);
-    localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
-  }, [isDark]);
-
-  const handleSearch = (q: string) => setSearchQuery(q);
+    return listenForAccountChanges(() => {
+      // Account-scoped identity must be invalidated before the next read so
+      // selected address, publisher name, and role refresh together.
+      invalidateAccountScopedCaches();
+      invalidateOwnerNameCache();
+      dispatch(initializeAuth());
+    });
+  }, [dispatch]);
 
   if (error) {
     console.warn('Auth initialization:', error);
   }
 
   return (
-    <Layout
-      isDark={isDark}
-      onToggleTheme={() => setIsDark((d) => !d)}
-      searchQuery={searchQuery}
-      onSearchChange={handleSearch}
-    >
+    <Layout>
       <Routes>
-        <Route path="/" element={<Suspense fallback={<PageLoader />}><HomePage searchQuery={searchQuery} /></Suspense>} />
+        <Route path="/" element={<Suspense fallback={<PageLoader />}><HomePage /></Suspense>} />
         <Route path="/projects" element={<Suspense fallback={<PageLoader />}><ProjectsPage /></Suspense>} />
         <Route path="/project/:entityId" element={<Suspense fallback={<PageLoader />}><ProjectDetailPage /></Suspense>} />
         <Route path="/polls" element={<Suspense fallback={<PageLoader />}><PollsPage /></Suspense>} />
@@ -83,9 +74,8 @@ const AppRoutes = () => {
         <Route path="/support" element={<Suspense fallback={<PageLoader />}><SupportPage /></Suspense>} />
         <Route path="/support/:ticketId" element={<Suspense fallback={<PageLoader />}><TicketDetailPage /></Suspense>} />
         <Route path="/wiki" element={<Suspense fallback={<PageLoader />}><WikiPage /></Suspense>} />
-        <Route path="/wiki/new" element={<Suspense fallback={<PageLoader />}><WikiEditPage /></Suspense>} />
-        <Route path="/wiki/:slug" element={<Suspense fallback={<PageLoader />}><WikiArticlePage /></Suspense>} />
-        <Route path="/wiki/:slug/edit" element={<Suspense fallback={<PageLoader />}><WikiEditPage /></Suspense>} />
+        <Route path="/wiki/article/:entityId" element={<Suspense fallback={<PageLoader />}><WikiArticlePage /></Suspense>} />
+        <Route path="/events" element={<Suspense fallback={<PageLoader />}><EventsPage /></Suspense>} />
       </Routes>
     </Layout>
   );

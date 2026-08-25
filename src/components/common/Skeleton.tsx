@@ -5,7 +5,7 @@ interface SkeletonProps {
 }
 
 export const Skeleton = ({ className = '' }: SkeletonProps) => (
-  <div className={`animate-pulse rounded bg-slate-200 dark:bg-slate-700 ${className}`} />
+  <div className={`animate-pulse rounded bg-[var(--color-surface-muted)] ${className}`} />
 );
 
 export const SkeletonCard = ({ lines = 3 }: { lines?: number }) => (

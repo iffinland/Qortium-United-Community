@@ -17,12 +17,25 @@ const accountCache: { value: UserAccount | null; cachedAt: number } = {
   cachedAt: 0,
 };
 let accountInflight: Promise<UserAccount> | null = null;
+let accountCacheEpoch = 0;
 
 const nameAddressCache = new Map<string, CachedValue<string | null>>();
 const nameAddressInflight = new Map<string, Promise<string | null>>();
 
 const isFresh = (cachedAt: number, ttlMs: number) =>
   Date.now() - cachedAt < ttlMs;
+
+/**
+ * Invalidate account-scoped caches. Called when the selected Qortium account
+ * changes so the next reads re-resolve address, names, and derived identity.
+ * Name→address mappings are NOT account-scoped and therefore stay intact.
+ */
+export const invalidateAccountScopedCaches = (): void => {
+  accountCache.value = null;
+  accountCache.cachedAt = 0;
+  accountInflight = null;
+  accountCacheEpoch += 1;
+};
 
 const readNumericBalance = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -50,6 +63,7 @@ export const getUserAccount = async (): Promise<UserAccount> => {
 
   if (accountInflight) return accountInflight;
 
+  const epoch = accountCacheEpoch;
   accountInflight = requestQortium<UserAccount>({
     action: 'GET_SELECTED_ACCOUNT',
   })
@@ -61,8 +75,10 @@ export const getUserAccount = async (): Promise<UserAccount> => {
         names: [],
       };
 
-      accountCache.value = result;
-      accountCache.cachedAt = Date.now();
+      if (epoch === accountCacheEpoch) {
+        accountCache.value = result;
+        accountCache.cachedAt = Date.now();
+      }
       return result;
     })
     .finally(() => {
