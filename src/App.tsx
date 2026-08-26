@@ -10,6 +10,10 @@ import { ToastProvider } from './components/common/ToastProvider';
 import { listenForAccountChanges } from './services/qortium/accountChangeListener';
 import { invalidateAccountScopedCaches } from './services/qortium/walletService';
 import { invalidateOwnerNameCache } from './services/qortium/qortiumClient';
+import {
+  readHomeTextSizeFromUrl,
+  startHomeTextSizeSync,
+} from './services/qortium/homeTextSize';
 
 // Lazy-loaded pages for code splitting
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -42,6 +46,13 @@ const AppRoutes = () => {
   useEffect(() => {
     dispatch(initializeAuth());
   }, [dispatch]);
+
+  useEffect(() => {
+    const stopHomeTextSizeSync = startHomeTextSizeSync({
+      initial: readHomeTextSizeFromUrl(window.location.search),
+    });
+    return stopHomeTextSizeSync;
+  }, []);
 
   useEffect(() => {
     return listenForAccountChanges(() => {

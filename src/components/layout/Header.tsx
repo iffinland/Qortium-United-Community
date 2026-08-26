@@ -230,7 +230,7 @@ const Header = () => {
 
                   {/* Address */}
                   <div className="mb-3 rounded-lg bg-[var(--color-surface-muted)]/50 p-2">
-                    <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">Wallet Address</p>
+                    <p className="mb-1 text-[0.625rem] uppercase tracking-wider text-[var(--color-text-muted)]">Wallet Address</p>
                     <div className="flex items-center gap-1.5">
                       <code className="flex-1 truncate text-xs">{address?.slice(0, 12)}...{address?.slice(-8)}</code>
                       <button onClick={copyAddress} className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition hover:bg-slate-700">
@@ -241,7 +241,7 @@ const Header = () => {
 
                   {/* Balance */}
                   <div className="mb-3 rounded-lg bg-[var(--color-surface-muted)]/50 p-2">
-                    <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">Balance</p>
+                    <p className="mb-1 text-[0.625rem] uppercase tracking-wider text-[var(--color-text-muted)]">Balance</p>
                     {userBalance === null ? (
                       <div className="h-5 w-20 animate-pulse rounded bg-[var(--color-surface-muted)]" />
                     ) : (

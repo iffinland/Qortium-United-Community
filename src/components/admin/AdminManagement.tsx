@@ -133,7 +133,7 @@ const AdminManagement = () => {
             <div key={m.address} className="flex items-center justify-between rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-card)] px-3 py-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{m.displayName ?? m.address}</p>
-                <p className="truncate text-[10px] text-[var(--color-text-muted)]">{m.address}</p>
+                <p className="truncate text-[0.625rem] text-[var(--color-text-muted)]">{m.address}</p>
               </div>
               <button
                 onClick={() => handleRemove(m.address)}

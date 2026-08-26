@@ -122,6 +122,35 @@
     --color-accent-info: var(--color-info);
   }
 
+  /*
+   * Qortium Home text size is mapped to a root font size. Most QUC typography
+   * is rem-based, so the selected Home size scales it automatically without a
+   * second zoom layer.
+   */
+  html[data-text-size='extra-small'] {
+    font-size: 14px;
+  }
+
+  html[data-text-size='small'] {
+    font-size: 15px;
+  }
+
+  html[data-text-size='medium'] {
+    font-size: 16px;
+  }
+
+  html[data-text-size='large'] {
+    font-size: 17px;
+  }
+
+  html[data-text-size='extra-large'] {
+    font-size: 18px;
+  }
+
+  html[data-text-size='huge'] {
+    font-size: 20px;
+  }
+
   body {
     margin: 0;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;

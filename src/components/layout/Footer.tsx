@@ -92,7 +92,7 @@ const ExternalLinkButton = ({ href, label }: { href: string; label: string }) =>
                 {copied ? 'Copied!' : 'Copy Link'}
               </button>
               {copied && (
-                <span className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white shadow-lg animate-pulse">
+                <span className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-600 px-3 py-1 text-[0.6875rem] font-bold text-white shadow-lg animate-pulse">
                   ✓ Copied to clipboard!
                 </span>
               )}
@@ -185,7 +185,7 @@ const Footer = () => {
             </div>
           </div>
 
-          <div className="mt-6 border-t border-[var(--color-border)] pt-4 text-center text-[11px] text-[var(--color-text-muted)]">
+          <div className="mt-6 border-t border-[var(--color-border)] pt-4 text-center text-[0.6875rem] text-[var(--color-text-muted)]">
             &copy; {new Date().getFullYear()} Qortium United Community. Built with ❤️ on Qortium Blockchain.
           </div>
         </div>

@@ -14,7 +14,7 @@ const FundBalance = ({ className = '' }: FundBalanceProps) => {
     <div className={`hidden items-center gap-2 rounded-lg px-2.5 py-1.5 transition hover:bg-white/5 sm:flex ${className}`}>
       <Coins className="h-4 w-4 text-amber-400" />
       <div className="hidden text-right leading-tight lg:block">
-        <p className="text-[9px] font-medium uppercase tracking-wider text-slate-400">
+        <p className="text-[0.5625rem] font-medium uppercase tracking-wider text-slate-400">
           Fund
         </p>
         <p className="text-sm font-bold text-white tabular-nums">

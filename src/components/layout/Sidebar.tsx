@@ -262,7 +262,7 @@ const Sidebar = () => {
         </div>
 
         {showStatsWarning && (
-          <div className="mt-3 flex items-start gap-1.5 rounded-md border border-amber-800 bg-amber-950 px-2 py-1.5 text-[10px] leading-tight text-amber-400">
+          <div className="mt-3 flex items-start gap-1.5 rounded-md border border-amber-800 bg-amber-950 px-2 py-1.5 text-[0.625rem] leading-tight text-amber-400">
             <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
             <span>Some stats may be incomplete or unavailable.</span>
           </div>
@@ -349,7 +349,7 @@ const Sidebar = () => {
             Recent Activity
           </h3>
           {activitySourcesMayBeIncomplete && (
-            <div className="mb-2 flex items-start gap-1.5 rounded-md border border-amber-800 bg-amber-950 px-2 py-1.5 text-[10px] leading-tight text-amber-400">
+            <div className="mb-2 flex items-start gap-1.5 rounded-md border border-amber-800 bg-amber-950 px-2 py-1.5 text-[0.625rem] leading-tight text-amber-400">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>Recent activity may be incomplete.</span>
             </div>
@@ -373,7 +373,7 @@ const Sidebar = () => {
                       {' · '}
                       {item.title}
                     </p>
-                    <p className="text-[10px] text-[var(--color-text-muted)]">
+                    <p className="text-[0.625rem] text-[var(--color-text-muted)]">
                       {item.authorName} · {timeAgo(item.occurredAt)}
                     </p>
                   </div>
@@ -406,7 +406,7 @@ const Sidebar = () => {
         ) : (
           <>
             {forumCompleteness === 'incomplete' && (
-              <div className="mb-2 flex items-start gap-1.5 rounded-md border border-amber-800 bg-amber-950 px-2 py-1.5 text-[10px] leading-tight text-amber-400">
+              <div className="mb-2 flex items-start gap-1.5 rounded-md border border-amber-800 bg-amber-950 px-2 py-1.5 text-[0.625rem] leading-tight text-amber-400">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                 <span>Forum activity and reply counts may be incomplete.</span>
               </div>
@@ -421,7 +421,7 @@ const Sidebar = () => {
                   <p className="truncate text-xs font-medium text-[var(--color-text-primary)]">
                     {thread.title}
                   </p>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">
+                  <p className="text-[0.625rem] text-[var(--color-text-muted)]">
                     {thread.categoryName}
                     {' · '}
                     <Clock className="mr-0.5 inline h-3 w-3" />
