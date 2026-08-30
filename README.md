@@ -67,17 +67,18 @@ npm run dev        # local Vite dev server
 
 ### Qortium node endpoints
 
-The canonical read-only Qortium Core API is:
+The workstation preview/test SSH tunnel verified on 2026-08-30 was:
 
 ```text
 http://127.0.0.1:24891
 ```
 
-Port `12391` is **Qortal**, not Qortium. Do not use `12391` for Qortium
-live-node, Core, or QDN verification. Before relying on a fixed endpoint, verify
-the actually reachable Qortium endpoint rather than silently assuming a port.
-Live Qortium verification must be read-only unless an owner-authorized write is
-explicitly in scope.
+This is environment-specific, not a timeless Qortium endpoint. Current Core
+source defines separate mainnet and testnet/preview defaults. Determine the
+intended environment and verify current Home/Core configuration plus actual
+reachability. Port `12391` is Qortal in the inspected dual-runtime Home setup
+and must not be assumed to be Qortium. Live verification remains read-only
+unless an owner-authorized write is explicitly in scope.
 
 ## Known limitations and deferred work
 
@@ -93,3 +94,15 @@ Implemented BETA scope versus future/post-BETA work is recorded in
 ## Release notes
 
 The `0.1.0-beta.1` release notes are in [`CHANGELOG.md`](CHANGELOG.md).
+
+The reproducible release/deployment gates are in
+[`docs/RELEASE.md`](docs/RELEASE.md). Build success is not live deployment
+evidence.
+
+## Agent routing and reports
+
+- [`AGENTS.md`](AGENTS.md) is the project entry point for AI-assisted work.
+- Canonical project context:
+  `/home/iffi/VsCodec-Projects/Qortium/qortium-dev-workspace/projects/qortium-united-community.md`
+- AI work reports belong under
+  `/home/iffi/VsCodec-Projects/Qortium/docs/qortium-united-community/`.
