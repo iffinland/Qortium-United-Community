@@ -16,11 +16,13 @@ import {
   fetchValidatedSupportCategories,
   fetchValidatedSupportTicketStatuses,
   fetchValidatedRoleSnapshots,
+  fetchValidatedModerationOperations,
   getCachedRoleSnapshot,
   buildSupportTicketPayload,
   buildTicketReplyPayload,
   buildSupportCategoryPayload,
   buildSupportTicketClosePayload,
+  buildModerationPayload,
   buildSupportRoleContext,
   reduceSupportTicketStatuses,
   reduceSupportTicketCloseBoundary,
@@ -36,6 +38,7 @@ import type {
 } from '../../services/qdn/runtime/supportTicketStatusRuntime';
 import type { ValidatedResource } from '../../services/qdn/runtime/runtimeTypes';
 import type { QueryCompleteness } from '../../services/qdn/runtime/runtimeTypes';
+import type { QdnResourceEnvelope } from '../../services/qdn/QdnResourceEnvelope';
 import { warningDiag, type QdnDiagnostic } from '../../services/qdn/diagnostics';
 import { assertSupportCategoryManagerAuthority } from '../../services/qdn/roles/supportCategoryAuth';
 import { QUC_SYSOP_ADDRESS } from '../../config/qortiumTrust';
@@ -48,6 +51,12 @@ import type { QucpSupportTicket } from '../../services/qdn/schemas/supportTicket
 import type { QucpTicketReply } from '../../services/qdn/schemas/ticketReplySchema';
 import type { QucpSupportCategory } from '../../services/qdn/schemas/supportCategorySchema';
 import type { QucpSupportTicketStatus } from '../../services/qdn/schemas/supportTicketStatusSchema';
+import type { QucpRoleRegistrySnapshot } from '../../services/qdn/schemas/roleRegistrySnapshotSchema';
+import { getLatestRoleSnapshot } from '../../services/qdn/runtime/roleSnapshotRuntime';
+import { reduceModerationState } from '../../services/qdn/operations/moderationReducer';
+import { authorizeCurrentModerationWrite } from '../../services/qdn/operations/moderationHistoricalAuthorization';
+import { buildModerationIdentifier } from '../../services/qdn/identifiers/moderationIdentifiers';
+import { parseQucpIdentifier } from '../../services/qdn/identifiers/qucpIdentifiers';
 import type { Ticket, TicketResponse, SupportCategory, TicketStatus } from '../../types/support';
 import { store as appStore } from '../../store';
 
@@ -58,6 +67,13 @@ export interface SupportBoardResult {
   categories: SupportCategory[];
   completeness: QueryCompleteness;
   diagnostics: readonly QdnDiagnostic[];
+  unavailableTickets: Array<{
+    entityId: string;
+    identifier: string;
+    publisherName?: string;
+    hidden: boolean;
+  }>;
+  hiddenTicketIds: string[];
 }
 
 export interface TicketDetailResult {
@@ -274,6 +290,57 @@ function supportRoleAuthorityDegraded(roleContext: SupportRoleContext): boolean 
   );
 }
 
+function acceptedSnapshotMap(roleContext: SupportRoleContext) {
+  return new Map<string, { envelope: QdnResourceEnvelope<QucpRoleRegistrySnapshot> }>(
+    roleContext.roleSnapshots.map(({ envelope }) => [envelope.data.snapshotId, { envelope }]),
+  );
+}
+
+function hiddenSupportTicketIds(
+  moderationResult: Awaited<ReturnType<typeof fetchValidatedModerationOperations>>,
+  roleContext: SupportRoleContext,
+): Set<string> {
+  if (
+    moderationResult.status === 'unavailable' ||
+    moderationResult.status === 'incomplete' ||
+    supportRoleAuthorityDegraded(roleContext)
+  ) {
+    return new Set();
+  }
+
+  const operations = moderationResult.items.map((item) => item.envelope);
+  const snapshots = acceptedSnapshotMap(roleContext);
+  const targets = new Set(
+    operations
+      .filter((operation) => operation.data.targetFamily === 'qucp-support-ticket')
+      .map((operation) => operation.data.targetEntityId),
+  );
+  const hidden = new Set<string>();
+  for (const entityId of targets) {
+    const { state } = reduceModerationState(
+      'qucp-support-ticket',
+      entityId,
+      operations,
+      snapshots,
+    );
+    if (state.visibility === 'hidden') hidden.add(entityId);
+  }
+  return hidden;
+}
+
+function isIsolatedTicketFetchFailure(
+  result: Awaited<ReturnType<typeof fetchValidatedSupportTickets>>,
+): boolean {
+  return (
+    result.status === 'incomplete' &&
+    result.reason === 'Some discovered resources could not be fetched.' &&
+    !result.diagnostics.some((diagnostic) =>
+      diagnostic.code === 'PUBLISHER_LOOKUP_FAILED' ||
+      diagnostic.code === 'SEARCH_FAILED',
+    )
+  );
+}
+
 function hasSupportRoleDependentClose(
   targetOwner: SupportTicketTargetOwner,
   operations: Array<{ data: QucpSupportTicketStatus }>,
@@ -327,16 +394,20 @@ export const supportApi = createApi({
     getTickets: builder.query<SupportBoardResult, string | void>({
       queryFn: (catFilter) => queryFn(async () => {
         const roleContext = await fetchSupportRoleContext();
-        const [ticketR, catR, statusR] = await Promise.all([
+        const [ticketR, catR, statusR, moderationR] = await Promise.all([
           fetchValidatedSupportTickets(),
           fetchAuthorizedCategories(roleContext),
           fetchValidatedSupportTicketStatuses(),
+          fetchValidatedModerationOperations(),
         ]);
         if (ticketR.status === 'unavailable') throw new Error('Support tickets unavailable.');
+        const hiddenIds = hiddenSupportTicketIds(moderationR, roleContext);
         const categories: SupportCategory[] = catR.status !== 'unavailable'
           ? sortSupportCategories(catR.items.map(toCategoryView))
           : [];
-        let tickets = ticketR.items.map((t) => {
+        let tickets = ticketR.items
+          .filter((ticket) => !hiddenIds.has(ticket.entityId))
+          .map((t) => {
           const view = toTicketView(t, categories);
           applyTicketStatuses(view, t, statusR, roleContext);
           const { roleDegraded, hasRoleDependentClose, boundary } =
@@ -346,19 +417,43 @@ export const supportApi = createApi({
           return view;
         });
         if (catFilter) tickets = tickets.filter(t => t.categoryId === catFilter);
-        const ticketComplete = ticketR.status === 'complete' || ticketR.status === 'empty';
+        const ticketComplete =
+          ticketR.status === 'complete' ||
+          ticketR.status === 'empty' ||
+          isIsolatedTicketFetchFailure(ticketR);
         const catComplete = catR.status === 'complete' || catR.status === 'empty';
         const statusComplete = statusR.status === 'complete' || statusR.status === 'empty';
-        const completeness = ticketComplete && catComplete && statusComplete
+        const moderationComplete =
+          moderationR.status === 'complete' || moderationR.status === 'empty';
+        const roleComplete = !supportRoleAuthorityDegraded(roleContext);
+        const completeness = ticketComplete && catComplete && statusComplete && moderationComplete && roleComplete
           ? 'complete' as const : 'incomplete' as const;
+        const unavailableTickets = (ticketR.diagnostics ?? [])
+          .filter((diagnostic) => diagnostic.code === 'FETCH_FAILED' && diagnostic.entityId)
+          .map((diagnostic) => {
+            const identifier = diagnostic.entityId!;
+            const parsed = parseQucpIdentifier(identifier);
+            return parsed?.family === 'qucp-support-ticket'
+              ? {
+                  entityId: parsed.entityId,
+                  identifier,
+                  publisherName: diagnostic.publisherName,
+                  hidden: hiddenIds.has(parsed.entityId),
+                }
+              : null;
+          })
+          .filter((ticket): ticket is NonNullable<typeof ticket> => ticket !== null);
         return {
           tickets,
           categories,
           completeness,
+          unavailableTickets,
+          hiddenTicketIds: [...hiddenIds].sort(),
           diagnostics: [
             ...(ticketR.diagnostics ?? []),
             ...(catR.diagnostics ?? []),
             ...(statusR.diagnostics ?? []),
+            ...(moderationR.diagnostics ?? []),
           ],
         };
       }),
@@ -448,6 +543,70 @@ export const supportApi = createApi({
         return { ticket, completeness: comp, diagnostics: allDiags };
       }),
       providesTags: (_r, _e, ticketId) => [{ type: 'Tickets', id: ticketId }, 'TicketReplies'],
+    }),
+
+    moderateTicketVisibility: builder.mutation<void, {
+      entityId: string;
+      action: 'hide' | 'restore';
+      actorName: string;
+      actorAddress: string;
+      reason?: string;
+    }>({
+      queryFn: async (input) => {
+        try {
+          const roleResult = await fetchValidatedRoleSnapshots();
+          const snapshot = getLatestRoleSnapshot(roleResult);
+          if (roleResult.status !== 'complete' || !snapshot) {
+            throw new Error('Complete current role authority is required for moderation.');
+          }
+          const snapshotResource = roleResult.items.find(
+            (item) => item.envelope.data.snapshotId === snapshot.snapshotId,
+          );
+          if (!snapshotResource) {
+            throw new Error('Current role snapshot resource was not found.');
+          }
+          const authorization = authorizeCurrentModerationWrite(
+            input.actorAddress,
+            input.action,
+            snapshot,
+          );
+          if (!authorization.authorized) {
+            throw new Error(authorization.reason ?? 'Moderation is not authorized.');
+          }
+
+          const operationId = `mod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const payload = buildModerationPayload({
+            operationId,
+            targetFamily: 'qucp-support-ticket',
+            targetEntityId: input.entityId,
+            action: input.action,
+            actorName: input.actorName,
+            actorAddress: input.actorAddress,
+            registrySnapshotId: snapshot.snapshotId,
+            registrySnapshotIdentifier: snapshotResource.envelope.metadata.identifier,
+            reason: input.reason,
+          });
+          const identifier = await buildModerationIdentifier(
+            payload.targetFamily,
+            payload.targetEntityId,
+            payload.operationId,
+            payload.actorAddress,
+            payload.action,
+            payload.registrySnapshotId,
+          );
+          await publishJsonResource({
+            service: 'DOCUMENT',
+            identifier,
+            payload,
+            title: `${input.action === 'hide' ? 'Hide' : 'Restore'} support ticket`,
+            filename: `${operationId}.json`,
+          });
+          return { data: undefined };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : 'Moderation failed.' };
+        }
+      },
+      invalidatesTags: ['Tickets'],
     }),
 
     // ===== CREATE TICKET (with category validation) =====
@@ -736,6 +895,7 @@ export const {
   useGetCategoriesQuery,
   useGetTicketsQuery,
   useGetTicketQuery,
+  useModerateTicketVisibilityMutation,
   useCreateTicketMutation,
   useCloseTicketMutation,
   useAddResponseMutation,

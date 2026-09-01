@@ -92,6 +92,11 @@ import {
   createAdminAuthorityProvider,
 } from '../roles/adminHistoricalAuthorization';
 import type { AdminAuthorityProvider } from './runtimeTypes';
+import {
+  queryModerationOperations,
+  buildModerationPayload,
+  type ModerationQueryResult,
+} from './moderationRuntime';
 
 // ---- Bridge Search Function ----
 
@@ -262,6 +267,10 @@ export async function fetchValidatedSupportTicketStatuses(): Promise<SupportTick
   return querySupportTicketStatuses(searchFn, fetchFn, getIdentityResolver());
 }
 
+export async function fetchValidatedModerationOperations(): Promise<ModerationQueryResult> {
+  return queryModerationOperations(searchFn, fetchFn, getIdentityResolver());
+}
+
 // ---- Poll & Vote Queries ----
 
 import {
@@ -358,6 +367,7 @@ export {
   reduceSupportTicketCloseBoundary,
   evaluateTicketReplyAgainstClose,
   authorizeSupportTicketCloseActor,
+  buildModerationPayload,
 };
 export { toResolvedMediaView };
 
@@ -380,6 +390,7 @@ export type {
   SupportTicketTargetOwner,
   SupportTicketCloseBoundary,
   TicketReplyCloseDecision,
+  ModerationQueryResult,
   ProjectQueryResult,
   MediaReferenceResolution,
   TombstoneQueryResult,

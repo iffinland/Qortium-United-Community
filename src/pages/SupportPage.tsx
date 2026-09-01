@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useGetTicketsQuery } from '../store/api/supportApi';
+import { useAppSelector } from '../store';
 import NewTicketForm from '../components/support/NewTicketForm';
 import TicketStatusBadge from '../components/support/TicketStatusBadge';
 import type { TicketType } from '../types/support';
@@ -41,6 +42,7 @@ const formatTicketDate = (value: string) => {
 
 const SupportPage = () => {
   const { data: result, isLoading } = useGetTicketsQuery();
+  const role = useAppSelector((state) => state.auth.role);
   const [showNew, setShowNew] = useState(false);
   const [catFilter, setCatFilter] = useState<string | 'all'>('all');
 
@@ -58,8 +60,16 @@ const SupportPage = () => {
         <div><h1 className="text-xl font-bold text-[var(--color-text-primary)]">Support Center</h1><p className="text-sm text-[var(--color-text-muted)]">Report bugs, suggest features, or ask questions</p></div>
         <button onClick={() => setShowNew(!showNew)} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--color-accent-hover)]"><Plus className="h-4 w-4" /> New Ticket</button>
       </div>
+      <div className="rounded-lg border border-cyan-800 bg-cyan-950 p-3 text-sm text-cyan-300">
+        Before opening a support ticket, please check the <Link to="/wiki" className="font-medium underline decoration-cyan-400 underline-offset-2 hover:text-cyan-200">Wiki</Link> and <Link to="/forum" className="font-medium underline decoration-cyan-400 underline-offset-2 hover:text-cyan-200">Forum</Link> first — your question may already have an answer.
+      </div>
       {showNew && <NewTicketForm onCancel={() => setShowNew(false)} onSuccess={() => setShowNew(false)} />}
       {result?.completeness === 'incomplete' && <div className="rounded-lg border border-amber-800 bg-amber-950 p-3 text-sm text-amber-400">Some resources could not be loaded. Results may be incomplete.</div>}
+      {(role === 'Admin' || role === 'SysOp') && result && result.unavailableTickets.filter(ticket => !ticket.hidden).length > 0 && (
+        <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-muted)] p-3 text-xs text-[var(--color-text-muted)]">
+          {result.unavailableTickets.filter(ticket => !ticket.hidden).length} Support ticket is currently unavailable. It can be reviewed in Admin Panel → Support Tickets.
+        </div>
+      )}
       {/* Category filter */}
       {categories.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

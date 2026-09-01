@@ -17,6 +17,7 @@ import {
 import { useAppSelector } from '../store';
 import PostManager from '../components/admin/PostManager';
 import SupportCategoryManager from '../components/admin/SupportCategoryManager';
+import SupportTicketManager from '../components/admin/SupportTicketManager';
 import ProjectManager from '../components/admin/ProjectManager';
 import PollManager from '../components/admin/PollManager';
 import WikiManager from '../components/admin/WikiManager';
@@ -26,6 +27,7 @@ import AdminManagement from '../components/admin/AdminManagement';
 type AdminSectionKey =
   | 'posts'
   | 'support-categories'
+  | 'support-tickets'
   | 'projects'
   | 'polls'
   | 'wiki'
@@ -68,6 +70,7 @@ const AdminPage = () => {
   const contentSections: AdminSectionItem[] = [
     { key: 'posts', label: 'Posts', icon: FilePenLine },
     { key: 'support-categories', label: 'Support Categories', icon: LifeBuoy },
+    { key: 'support-tickets', label: 'Support Tickets', icon: LifeBuoy },
     { key: 'projects', label: 'Projects', icon: FolderKanban },
     { key: 'polls', label: 'Polls', icon: BarChart3 },
     { key: 'events', label: 'Events', icon: Calendar },
@@ -85,6 +88,8 @@ const AdminPage = () => {
         return <PostManager />;
       case 'support-categories':
         return <SupportCategoryManager />;
+      case 'support-tickets':
+        return <SupportTicketManager />;
       case 'projects':
         return <ProjectManager />;
       case 'polls':

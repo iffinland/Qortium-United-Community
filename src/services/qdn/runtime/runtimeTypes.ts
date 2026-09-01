@@ -81,6 +81,14 @@ export interface RuntimeQueryParams {
   /** AbortSignal for cancellation */
   signal?: AbortSignal;
   /**
+   * Per-resource fetch timeout for bounded content loading.
+   *
+   * This does not cancel the underlying bridge promise; it only bounds how
+   * long a single missing/slow resource can keep a domain result from
+   * rendering its already-validated partial data.
+   */
+  fetchTimeoutMs?: number;
+  /**
    * Optional fail-closed authority provider for admin-managed families.
    * When present, every accepted resource is also checked against canonical
    * role history at its trusted mutation/publication time.

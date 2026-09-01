@@ -660,6 +660,19 @@ describe('boundedFetchResources', () => {
     expect(result.failures[0].metadata.identifier).toBe('post-2');
   });
 
+  it('bounds an individual slow fetch and preserves the partial result', async () => {
+    const fetchFn = vi.fn().mockImplementationOnce(() => new Promise(() => {}));
+
+    const result = await boundedFetchResources(fetchFn, parser, [makeMetadata()], {
+      fetchTimeoutMs: 20,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.failures).toHaveLength(1);
+    expect(result.complete).toBe(false);
+    expect(result.failures[0].error).toContain('timed out after 20ms');
+  });
+
   it('handles parser returning null', async () => {
     const fetchFn = vi.fn().mockResolvedValue({ title: 'Test' });
     const nullParser = () => null;

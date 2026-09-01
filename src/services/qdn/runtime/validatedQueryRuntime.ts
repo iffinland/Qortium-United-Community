@@ -139,7 +139,10 @@ export async function validatedRuntimeQuery<T>(
     fetchFn,
     parser,
     searchResult.items,
-    { signal: params.signal },
+    {
+      signal: params.signal,
+      fetchTimeoutMs: params.fetchTimeoutMs,
+    },
   );
 
   // Preserve fetch-level diagnostics (per-resource failures/timeouts) so a

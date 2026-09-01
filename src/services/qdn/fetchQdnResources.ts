@@ -50,6 +50,50 @@ export interface BoundedFetchResult<T> {
 
 const DEFAULT_CONCURRENCY = 5;
 
+/**
+ * Bound an individual QDN fetch without cancelling the underlying bridge
+ * promise. QDN reads are idempotent and the bridge promise cannot be
+ * cancelled in JavaScript, so a late result is intentionally ignored.
+ */
+function withResourceFetchTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs?: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!timeoutMs || timeoutMs <= 0) return promise;
+  if (signal?.aborted) return Promise.reject(new Error('Resource fetch cancelled.'));
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      callback();
+    };
+
+    const onAbort = () => {
+      finish(() => reject(new Error('Resource fetch cancelled.')));
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    const timer = setTimeout(() => {
+      finish(() => reject(new Error(`Resource fetch timed out after ${timeoutMs}ms.`)));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        finish(() => resolve(value));
+      },
+      (error) => {
+        finish(() => reject(error));
+      },
+    );
+  });
+}
+
 // ---- Implementation ----
 
 /**
@@ -66,6 +110,7 @@ export async function boundedFetchResources<T>(
   options?: {
     concurrency?: number;
     signal?: AbortSignal;
+    fetchTimeoutMs?: number;
   },
 ): Promise<BoundedFetchResult<T>> {
   const concurrency = options?.concurrency ?? DEFAULT_CONCURRENCY;
@@ -102,11 +147,15 @@ export async function boundedFetchResources<T>(
         const meta = metadatas[index];
 
         try {
-          const raw = await fetchFn({
-            service: meta.service,
-            name: meta.name,
-            identifier: meta.identifier,
-          });
+          const raw = await withResourceFetchTimeout(
+            fetchFn({
+              service: meta.service,
+              name: meta.name,
+              identifier: meta.identifier,
+            }),
+            options?.fetchTimeoutMs,
+            signal,
+          );
 
           if (isCancelled()) return;
 

@@ -21,6 +21,16 @@ export const SUPPORT_TICKET_SEARCH_PREFIX = 'qucp-support-ticket-' as const;
 export const TICKET_REPLY_SEARCH_PREFIX = 'qucp-ticket-reply-' as const;
 export const SUPPORT_CATEGORY_SEARCH_PREFIX = 'qucp-support-category-' as const;
 
+/**
+ * Support tickets are small public documents and normally fetch in well under
+ * a second. A single QDN resource that is still downloading, missing data, or
+ * otherwise not fetchable must not hold the whole support board in the loading
+ * state for the bridge's full read timeout. When this timeout is hit, the
+ * resource is recorded as a fetch failure and the board renders the valid
+ * partial set with its existing incomplete-state notice.
+ */
+const SUPPORT_TICKET_FETCH_TIMEOUT_MS = 2000;
+
 // ---- Query Result Types ----
 
 export type SupportTicketQueryResult = ValidatedRuntimeQueryResult<QucpSupportTicket>;
@@ -206,7 +216,10 @@ export async function querySupportTickets(
   return validatedRuntimeQuery<QucpSupportTicket>(searchFn, fetchFn, parseSupportTicketPayload, supportTicketPolicy, identityResolver, {
     service: params?.service ?? 'DOCUMENT',
     identifierPrefix: params?.identifierPrefix ?? SUPPORT_TICKET_SEARCH_PREFIX,
-    pageSize: params?.pageSize, safetyMax: params?.safetyMax, signal: params?.signal,
+    pageSize: params?.pageSize,
+    safetyMax: params?.safetyMax,
+    signal: params?.signal,
+    fetchTimeoutMs: params?.fetchTimeoutMs ?? SUPPORT_TICKET_FETCH_TIMEOUT_MS,
   });
 }
 
