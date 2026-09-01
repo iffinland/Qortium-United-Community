@@ -19,14 +19,14 @@ const Layout = ({
     <div className="flex min-h-screen flex-col">
       <Header />
 
-      <div className="flex flex-1">
+      <div className="mx-auto flex w-full max-w-[1760px] flex-1">
         {/* Main content */}
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-4xl">{children}</div>
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
+          {children}
         </main>
 
         {/* Desktop Sidebar */}
-        <div className="hidden shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-4 py-6 lg:block lg:w-80">
+        <div className="hidden shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-4 py-6 lg:block lg:w-[300px] xl:w-[360px]">
           <div className="sticky top-6">
             <Sidebar />
           </div>

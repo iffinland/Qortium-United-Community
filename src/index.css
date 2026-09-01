@@ -2,6 +2,14 @@
 @source './index.html';
 @source './src/**/*.{ts,tsx}';
 
+@font-face {
+  font-family: "Lexend";
+  src: url("./assets/fonts/lexend/Lexend-Variable.ttf") format("truetype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 100 900;
+}
+
 /*
  * Single unified Qortium visual theme.
  *
@@ -153,7 +161,11 @@
 
   body {
     margin: 0;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family:
+      "Lexend", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     color: var(--color-text-primary);
@@ -254,21 +266,22 @@
 
   .rich-content {
     color: var(--color-text-secondary);
-    font-size: 0.875rem;
+    font-size: 1rem;
     line-height: 1.7;
+    max-width: 72ch;
     overflow-wrap: anywhere;
   }
 
   .rich-content h2 {
     margin: 1.25rem 0 0.5rem;
-    font-size: 1.15rem;
+    font-size: 1.3rem;
     font-weight: 700;
     color: var(--color-text-primary);
   }
 
   .rich-content h3 {
     margin: 1rem 0 0.4rem;
-    font-size: 1rem;
+    font-size: 1.15rem;
     font-weight: 600;
     color: var(--color-text-primary);
   }
@@ -324,5 +337,33 @@
 
   .rich-content.legacy-markdown p {
     margin-bottom: 0.75rem;
+  }
+
+  /*
+   * Shared responsive card grid.
+   *
+   * auto-fit (rather than auto-fill) collapses empty tracks when there are
+   * fewer cards than columns, so two desktop cards expand to fill the full
+   * width instead of leaving a phantom third column. The minimum track size
+   * is the per-column width for the breakpoint maximum (1 / 2 / 3 columns),
+   * which keeps auto-fit from creating extra columns while still adapting to
+   * the actual item count.
+   */
+  .quc-card-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 100%), 1fr));
+  }
+
+  @media (min-width: 640px) {
+    .quc-card-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, calc((100% - 1rem) / 2)), 1fr));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .quc-card-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, calc((100% - 2rem) / 3)), 1fr));
+    }
   }
 }

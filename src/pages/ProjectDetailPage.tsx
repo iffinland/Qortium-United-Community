@@ -165,7 +165,7 @@ const ProjectDetailPage = () => {
   const hasInlineImage = findFirstQdnImageRef(project.description) !== null;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="space-y-4">
       {/* Back link */}
       <button
         onClick={() => navigate('/projects')}

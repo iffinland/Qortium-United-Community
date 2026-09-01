@@ -82,83 +82,84 @@ const HomePage = () => {
           </p>
         </div>
       ) : (
-        visible.map((post) => (
-          <Link
-            key={post.id}
-            to={`/post/${post.id}`}
-            className="block transition-transform hover:scale-[1.01]"
-          >
-            <article className="rounded-xl bg-[var(--color-surface-card)] p-5 shadow-sm transition-shadow hover:shadow-md">
-          {/* Pin indicator */}
-          {post.isPinned && (
-            <div className="mb-2 flex items-center gap-1 text-xs font-medium text-amber-400">
-              <Pin className="h-3 w-3" />
-              Pinned Post
-            </div>
-          )}
+        <div className="quc-card-grid">
+          {visible.map((post) => (
+            <Link
+              key={post.id}
+              to={`/post/${post.id}`}
+              className="block h-full transition-transform hover:scale-[1.01]"
+            >
+              <article className="flex h-full flex-col rounded-xl bg-[var(--color-surface-card)] p-5 shadow-sm transition-shadow hover:shadow-md">
+                {/* Pin indicator */}
+                {post.isPinned && (
+                  <div className="mb-2 flex items-center gap-1 text-xs font-medium text-amber-400">
+                    <Pin className="h-3 w-3" />
+                    Pinned Post
+                  </div>
+                )}
 
-          {/* Title */}
-          <h2 className="mb-2 text-lg font-semibold leading-snug text-[var(--color-text-primary)]">
-            {post.title}
-          </h2>
+                {/* Title */}
+                <h2 className="mb-2 text-lg font-semibold leading-snug text-[var(--color-text-primary)]">
+                  {post.title}
+                </h2>
 
-          {/* Tags */}
-          {post.tags && post.tags.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {post.tags.map((tag: string) => (
-                <button
-                  key={tag}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setActiveTag(activeTag === tag ? null : tag);
-                  }}
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition ${
-                    activeTag === tag
-                      ? 'border-cyan-500 bg-[var(--color-accent)] text-white'
-                      : 'border-cyan-800 bg-cyan-950/50 text-cyan-400 hover:border-cyan-400'
-                  }`}
-                >
-                  #{tag}
-                </button>
-              ))}
-            </div>
-          )}
+                {/* Tags */}
+                {post.tags && post.tags.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {post.tags.map((tag: string) => (
+                      <button
+                        key={tag}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveTag(activeTag === tag ? null : tag);
+                        }}
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition ${
+                          activeTag === tag
+                            ? 'border-cyan-500 bg-[var(--color-accent)] text-white'
+                            : 'border-cyan-800 bg-cyan-950/50 text-cyan-400 hover:border-cyan-400'
+                        }`}
+                      >
+                        #{tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-          {/* Content preview */}
-          {post.coverImageRef && (
-            <div className="mb-3 overflow-hidden rounded-lg">
-              <QdnImage
-                imageRef={post.coverImageRef}
-                alt={post.title}
-                className="h-40 w-full object-cover transition hover:scale-105"
-                loading="lazy"
-              />
-            </div>
-          )}
-          <p className="mb-3 line-clamp-3 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-            {toPlainTextPreview(post.content)}
-          </p>
+                {/* Content preview */}
+                {post.coverImageRef && (
+                  <div className="mb-3 overflow-hidden rounded-lg">
+                    <QdnImage
+                      imageRef={post.coverImageRef}
+                      alt={post.title}
+                      className="h-40 w-full object-cover transition hover:scale-105"
+                      loading="lazy"
+                    />
+                  </div>
+                )}
+                <p className="mb-3 line-clamp-3 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+                  {toPlainTextPreview(post.content)}
+                </p>
 
-          {/* Meta info */}
-          <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-muted)]">
-            <span className="font-medium text-[var(--color-text-secondary)]">
-              {post.authorName}
-            </span>
-            <span>
-              {post.createdAt
-                ? new Date(post.createdAt).toLocaleDateString('en-US', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })
-                : 'Unknown'}
-            </span>
-
-          </div>
-        </article>
-        </Link>
-      ))
+                {/* Meta info */}
+                <div className="mt-auto flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-muted)]">
+                  <span className="font-medium text-[var(--color-text-secondary)]">
+                    {post.authorName}
+                  </span>
+                  <span>
+                    {post.createdAt
+                      ? new Date(post.createdAt).toLocaleDateString('en-US', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        })
+                      : 'Unknown'}
+                  </span>
+                </div>
+              </article>
+            </Link>
+          ))}
+        </div>
       )}
 
       {/* Load More */}

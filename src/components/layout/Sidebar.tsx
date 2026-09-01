@@ -211,7 +211,7 @@ const Sidebar = () => {
   };
 
   return (
-    <aside className="w-full space-y-4 lg:w-72">
+    <aside className="w-full space-y-4">
       {/* Community Stats */}
       <div className="rounded-xl bg-[var(--color-surface-card)] p-4 shadow-sm">
         <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">

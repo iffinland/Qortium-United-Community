@@ -20,6 +20,12 @@ import { requestQortium } from '../../services/qortium/qortiumClient';
 
 type RichTextContentProps = {
   value: string;
+  /**
+   * Hide the first inline `[imageqdn]` marker so the caller can render that
+   * image separately (for example as a bounded detail-page preview) without
+   * duplicating it inside the body text.
+   */
+  skipFirstImage?: boolean;
 };
 
 // ---- Link handling ----
@@ -218,14 +224,21 @@ const renderTokens = (tokens: Token[], keyPrefix: string): ReactNode[] =>
     return children;
   });
 
-export function RichTextContent({ value }: RichTextContentProps) {
+export function RichTextContent({
+  value,
+  skipFirstImage = false,
+}: RichTextContentProps) {
   const rendered = useMemo(() => {
     if (!value) return null;
-    if (hasRichTextMarkup(value)) {
-      return <div className="rich-content">{renderTokens(tokenize(value), 'root')}</div>;
+    const source = skipFirstImage
+      ? value.replace(/\[imageqdn\][\s\S]*?\[\/imageqdn\]/i, '')
+      : value;
+    if (!source.trim()) return null;
+    if (hasRichTextMarkup(source)) {
+      return <div className="rich-content">{renderTokens(tokenize(source), 'root')}</div>;
     }
-    return <div className="rich-content legacy-markdown">{parseMarkdown(value)}</div>;
-  }, [value]);
+    return <div className="rich-content legacy-markdown">{parseMarkdown(source)}</div>;
+  }, [value, skipFirstImage]);
 
   return rendered;
 }

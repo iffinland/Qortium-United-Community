@@ -7,8 +7,7 @@ import { useGetPostQuery } from '../store/api/qortiumApi';
 import CommentList from '../components/forum/CommentList';
 import CommentForm from '../components/forum/CommentForm';
 import { RichTextContent } from '../components/editor/RichTextContent';
-import { QdnImage } from '../components/editor/QdnImage';
-import { findFirstQdnImageRef } from '../services/rich-text/richText';
+import { QdnImagePreview } from '../components/common/QdnImagePreview';
 
 const PostDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -57,7 +56,7 @@ const PostDetailPage = () => {
     );
   }
 
-  const hasInlineImage = findFirstQdnImageRef(post.content) !== null;
+  const mainImageRef = post.coverImageRef ?? null;
 
   return (
     <div className="space-y-6">
@@ -83,19 +82,6 @@ const PostDetailPage = () => {
           {post.title}
         </h1>
 
-        {/* Legacy / derived cover image is shown only when the body does not
-            already render the image inline. */}
-        {!hasInlineImage && post.coverImageRef && (
-          <div className="mb-4 overflow-hidden rounded-xl">
-            <QdnImage
-              imageRef={post.coverImageRef}
-              alt={post.title}
-              className="max-h-96 w-full object-cover"
-              loading="eager"
-            />
-          </div>
-        )}
-
         <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-muted)]">
           <span className="font-medium text-[var(--color-text-secondary)]">
             {post.authorName}
@@ -114,7 +100,26 @@ const PostDetailPage = () => {
           </span>
         </div>
 
-        <RichTextContent value={post.content} />
+        {/* Desktop two-area composition: a bounded contain-fitted image
+            preview sits alongside the body, while the title/meta above span
+            the full content area. On narrow screens both stack vertically. */}
+        <div className="gap-6 lg:flex">
+          {mainImageRef && (
+            <div className="mb-4 shrink-0 lg:mb-0 lg:w-[320px] xl:w-[400px]">
+              <QdnImagePreview
+                imageRef={mainImageRef}
+                alt={post.title}
+                previewClassName="max-h-[420px] w-auto max-w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-muted)] object-contain"
+              />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <RichTextContent
+              value={post.content}
+              skipFirstImage={Boolean(mainImageRef)}
+            />
+          </div>
+        </div>
 
         {/* Post stats */}
         <div className="mt-6 flex items-center gap-4 border-t border-slate-700 pt-4 text-sm text-[var(--color-text-muted)]">
