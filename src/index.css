@@ -192,6 +192,14 @@
 
   input,
   textarea,
+  select,
+  [contenteditable] {
+    /* Native form controls do not reliably inherit the app typography. */
+    font: inherit;
+  }
+
+  input,
+  textarea,
   select {
     background-color: var(--color-surface);
     color: var(--color-text-primary);
